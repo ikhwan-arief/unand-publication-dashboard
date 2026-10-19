@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="id" data-export-controls="hidden">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="description" content="Profil publikasi, dampak, kolaborasi, dan keterbukaan penelitian Universitas Andalas berdasarkan metadata publik OpenAlex.">
+  <meta name="theme-color" content="#183D34">
+  <title>Universitas Andalas · Profil Publikasi</title>
+  <link rel="icon" href="assets/unand-logo.png" type="image/png">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/vendor/chart.umd.min.js" defer></script>
+  <script type="module" src="assets/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Langsung ke konten</a>
+  <aside class="sidebar" aria-label="Navigasi utama">
+    <a class="brand" href="#overview"><img src="assets/unand-logo.png" width="52" height="60" alt="Logo Universitas Andalas"><span>Universitas<br><strong>Andalas</strong><small>RESEARCH OBSERVATORY</small></span></a>
+    <div class="sidebar-label">PROFIL PUBLIKASI</div>
+    <nav id="navigation"></nav>
+    <div class="sidebar-bottom"><p>Dashboard independen berbasis data terbuka. Bukan statistik resmi yang telah disahkan.</p><p class="developer-credit">Dikompilasi dan dikembangkan oleh <strong>Ikhwan Arief</strong> <span>(ikhwan[at]eng.unand.ac.id)</span></p></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><div><button id="menu-toggle" class="icon-button mobile-menu" aria-label="Buka navigasi" aria-expanded="false">☰</button><span class="breadcrumb">PROFIL RISET <span aria-hidden="true">/</span> UNIVERSITAS ANDALAS</span></div><div class="topbar-right"><span id="freshness" class="status-badge">Memuat snapshot</span><a id="method-button" class="text-button" href="https://openalex.org/about" target="_blank" rel="noopener noreferrer">Tentang data</a></div></header>
+    <main id="main" tabindex="-1">
+      <section class="page-heading"><div><div class="eyebrow">ANDALAS RESEARCH OBSERVATORY</div><h1 id="page-title">Ringkasan universitas</h1><p id="page-description">Menelusuri keluaran, keterhubungan, dan dampak penelitian.</p></div><div class="heading-actions"><button id="export-csv" class="button secondary">↓ CSV</button><button id="export-json" class="button secondary">↓ JSON</button><button id="print" class="button">Cetak laporan ↗</button></div></section>
+      <section class="filters" aria-label="Filter publikasi"><div class="filter-topline"><strong>Jelajahi data</strong><button id="reset" type="button" class="button secondary" title="Kembalikan semua filter ke pengaturan default tab ini">Reset semua filter</button></div><form id="filters-form"><label class="year-filter">Dari tahun<select id="filter-from" name="from" aria-label="Dari tahun"></select></label><label class="year-filter">Sampai tahun<select id="filter-to" name="to" aria-label="Sampai tahun"></select></label><label>Cakupan<select id="filter-scope" name="scope"><option value="affiliated">Afiliasi Unand</option><option value="funded">Didanai Unand</option><option value="published">Terbitan Unand</option></select></label><label>Korpus<select id="filter-corpus" name="corpus"><option value="core">Korpus utama</option><option value="all">Termasuk perluasan</option></select></label><label>Jenis karya<select id="filter-type" name="type"><option value="">Semua jenis</option></select></label><label>Bidang utama<select id="filter-field" name="field"><option value="">Semua bidang</option></select></label><label>Akses<select id="filter-oa" name="oa"><option value="">Semua akses</option><option value="open">Open access</option><option value="closed">Closed</option><option value="diamond">Diamond</option><option value="gold">Gold</option><option value="green">Green</option><option value="hybrid">Hybrid</option><option value="bronze">Bronze</option></select></label><button class="button apply" type="submit">Terapkan</button></form><div id="active-filters" class="active-filters" aria-label="Filter tambahan aktif"></div></section>
+      <div id="notice" role="status" aria-live="polite"></div>
+      <div id="content" aria-busy="true"><div class="loading"><span class="spinner"></span><h2>Menyiapkan profil penelitian</h2><p>Membaca snapshot publikasi terbaru.</p></div></div>
+      <footer class="footer"><div><strong>Universitas Andalas</strong><span>Profil publikasi dari metadata OpenAlex · Padang, Indonesia</span></div><div id="snapshot-caption">Snapshot belum tersedia</div></footer>
+    </main>
+  </div>
+  <dialog id="detail-dialog"><div class="dialog-head"><span class="eyebrow">DETAIL PUBLIKASI</span><button id="close-detail" class="icon-button" aria-label="Tutup detail">✕</button></div><div id="detail-body"></div></dialog>
+</body>
+</html>
