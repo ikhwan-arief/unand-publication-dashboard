@@ -10,7 +10,7 @@
     const CSS = `.uam{font:inherit;color:inherit;line-height:1.5;max-width:100%}.uam *{box-sizing:border-box}
 .uam h3,.uam h4{font-family:inherit;color:inherit;margin:0 0 .3em;line-height:1.25}.uam h3{font-size:1.25em;margin-top:1.2em}.uam h4{font-size:1em}
 .uam p{margin:.3em 0}.uam small,.uam .uam-note{font-size:.82em;opacity:.78}
-.uam-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:14px;margin:12px 0}
+.uam-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(max(min(100%,290px),calc(50% - 7px)),1fr));gap:14px;margin:12px 0}
 .uam-kpis{grid-template-columns:repeat(auto-fit,minmax(max(140px,calc(33.3% - 10px)),1fr))}
 .uam-card{border:1px solid rgba(128,128,128,.3);border-radius:8px;padding:12px 14px;min-width:0;overflow-wrap:anywhere}
 .uam-value{font-size:1.9em;font-weight:700;line-height:1.1;color:var(--uam-accent)}.uam-kpis .uam-value{font-size:1.45em}
