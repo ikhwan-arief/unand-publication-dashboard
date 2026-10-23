@@ -166,17 +166,18 @@ export function smallMultiples(p, allRows, availableYears, onClick, options = {}
     select.onchange = draw;
     draw();
 }
-export function countryBubbleMap(p, rows, geography) {
+// `unit` names what a bubble counts: shared publications on Kolaborasi, works on a journal page.
+export function countryBubbleMap(p, rows, geography, { unit = 'publikasi bersama' } = {}) {
     if (!rows.length) { empty(p); return; }
     p.node.classList.add('world-map-panel');
     const project = (lon, lat) => [(lon + 180) * 960 / 360, (85 - lat) * 420 / 145];
-    const svg = svgEl('svg', { viewBox: '0 0 960 420', role: 'group', 'aria-label': 'Peta jumlah publikasi bersama per negara', xmlns: NS });
+    const svg = svgEl('svg', { viewBox: '0 0 960 420', role: 'group', 'aria-label': `Peta jumlah ${unit} per negara`, xmlns: NS });
     svg.append(svgEl('rect', { x: 0, y: 0, width: 960, height: 420, fill: '#edf4f5' }));
     for (const d of geography.borders) svg.append(svgEl('path', { d, fill: '#d8e3d9', stroke: '#ffffff', 'stroke-width': .65, 'vector-effect': 'non-scaling-stroke' }));
     const tooltip = el('p', { class: 'map-tooltip', role: 'status', 'aria-live': 'polite' }, 'Arahkan penunjuk atau fokuskan bubble untuk melihat nama negara dan jumlah karya.');
     const popup = el('div', { class: 'map-popup', role: 'tooltip', hidden: '' });
     const show = (row, group) => {
-        const label = `${row.name} (${row.id}): ${integer.format(row.count)} publikasi bersama · ${integer.format(row.citations)} sitasi`;
+        const label = `${row.name} (${row.id}): ${integer.format(row.count)} ${unit} · ${integer.format(row.citations)} sitasi`;
         tooltip.textContent = label;
         popup.textContent = label;
         popup.hidden = false;
@@ -193,7 +194,7 @@ export function countryBubbleMap(p, rows, geography) {
     const maximum = Math.max(1, ...mapped.map(row => row.count));
     for (const row of [...mapped].sort((a, b) => b.count - a.count)) {
         const position = geography.countries[row.id], [cx, cy] = project(position.lon, position.lat);
-        const radius = 28 * Math.sqrt(row.count / maximum), label = `${row.name} (${row.id}): ${integer.format(row.count)} publikasi bersama · ${integer.format(row.citations)} sitasi`;
+        const radius = 28 * Math.sqrt(row.count / maximum), label = `${row.name} (${row.id}): ${integer.format(row.count)} ${unit} · ${integer.format(row.citations)} sitasi`;
         const group = svgEl('g', { class: 'country-bubble', 'data-country': row.id, tabindex: 0, role: 'img', 'aria-label': label });
         group.append(svgEl('title', {}, label), svgEl('circle', { cx, cy, r: Math.max(7, radius), fill: 'transparent' }),
             svgEl('circle', { class: 'bubble-dot', cx, cy, r: radius, fill: '#28745b', 'fill-opacity': .62, stroke: '#ffffff', 'stroke-width': 1.1, 'vector-effect': 'non-scaling-stroke' }));
@@ -231,7 +232,7 @@ export function countryBubbleMap(p, rows, geography) {
     p.node.append(tooltip, el('p', { class: 'panel-note' },
         `${integer.format(mapped.length)} negara/area dipetakan. Luas bubble proporsional terhadap jumlah karya; terbesar ${integer.format(maximum)} karya. Posisi memakai titik label negara, bukan lokasi kampus. Geografi: Natural Earth (public domain).${missing.length ? ' Koordinat belum tersedia: ' + missing.map(row => row.name).join(', ') + '.' : ''}`));
     exportControl(p);
-    accessible(p, rows.map(row => ({ ...row, description: `${row.name} (${row.id}): ${integer.format(row.count)} publikasi bersama · ${integer.format(row.citations)} sitasi` })));
+    accessible(p, rows.map(row => ({ ...row, description: `${row.name} (${row.id}): ${integer.format(row.count)} ${unit} · ${integer.format(row.citations)} sitasi` })));
 }
 export function donut(p, rows, onClick) {
     if (!rows.length) {

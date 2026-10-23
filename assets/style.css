@@ -193,8 +193,8 @@ th[aria-sort="descending"] .sort-button::after {
   margin-top:10px
 }
 .citation-year-table th,.citation-year-table td {
-  padding:6px 8px;
-  font-size:12px
+  padding:5px 4px;
+  font-size:11px
 }
 .citation-year-table tbody th[scope="row"] {
   text-align:left;

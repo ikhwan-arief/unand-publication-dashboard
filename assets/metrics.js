@@ -195,7 +195,8 @@ export function journalWidgetData(journal, works, entities, manifest, dataset) {
         citations: journal.citations,
         types: { names: types, rows: perYear(w => w.type, types) },
         access: { names: statuses, rows: perYear(w => w.oa_status, statuses) },
-        countries: summary.top.countries.slice(0, 8).map(r => [r.name, r.count]),
+        // [ISO code, name, works] for the widget's bubble map; the summary keeps the top 50 countries.
+        countries: summary.top.countries.map(r => [r.id, r.name, r.count]),
         origin: { unand: own.local, external: own.count - own.local },
         // SDG labels per article ([goal, score|null], highest score first) and unique works per goal for the journal.
         articles: summary.publications.slice(0, 20).map(w => ({ title: w.title, year: w.year, citations: w.citations, doi: w.doi || null, oa: w.oa_status,

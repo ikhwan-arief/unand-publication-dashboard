@@ -25,7 +25,8 @@
             impact: 'Dampak sitasi jurnal', types: 'Jenis karya menurut tahun', access: 'Komposisi akses per tahun', accessNote: 'Persentase karya per status OA',
             countries: 'Negara afiliasi kontributor', countriesNote: 'Satu karya dapat masuk beberapa negara', origin: 'Asal afiliasi penulis', originNote: 'Karya dengan sedikitnya satu penulis Unand dibanding tanpa afiliasi Unand',
             unand: 'Ada afiliasi Unand', external: 'Tanpa afiliasi Unand', articles: 'Artikel paling banyak disitasi', columns: ['Judul', 'Tahun', 'Sitasi', 'Akses', 'SDG'],
-            sdgCard: 'SDG karya jurnal', sdgNote: 'Karya unik per tujuan; satu karya dapat masuk beberapa tujuan. Klasifikasi otomatis OpenAlex, bukan ukuran dampak.', score: 'skor keyakinan', noSdg: 'Belum ada label SDG pada karya jurnal ini.',
+            sdgCard: 'SDG karya jurnal', sdgNote: 'Karya unik per tujuan; satu karya dapat masuk beberapa tujuan. Klasifikasi otomatis OpenAlex, bukan ukuran dampak.', score: 'skor keyakinan', noSdg: 'Belum ada label SDG pada karya jurnal ini.', country: 'Negara', moreGoals: n => `${n} tujuan lain tercantum di tabel angka.`, mapLoading: 'Memuat peta…', noCountries: 'Belum ada negara afiliasi pada karya jurnal ini.',
+            mapMissing: list => `Tanpa koordinat peta: ${list}.`, mapNote: 'Ukuran bubble sebanding dengan jumlah karya; arahkan kursor atau ketuk untuk melihat angka',
             sdgNames: ['Tanpa Kemiskinan', 'Tanpa Kelaparan', 'Kehidupan Sehat dan Sejahtera', 'Pendidikan Berkualitas', 'Kesetaraan Gender', 'Air Bersih dan Sanitasi Layak', 'Energi Bersih dan Terjangkau', 'Pekerjaan Layak dan Pertumbuhan Ekonomi', 'Industri, Inovasi dan Infrastruktur', 'Berkurangnya Kesenjangan', 'Kota dan Permukiman yang Berkelanjutan', 'Konsumsi dan Produksi yang Bertanggung Jawab', 'Penanganan Perubahan Iklim', 'Ekosistem Lautan', 'Ekosistem Daratan', 'Perdamaian, Keadilan dan Kelembagaan yang Tangguh', 'Kemitraan untuk Mencapai Tujuan'],
             footer: n => `${n} karya teratas menurut sitasi. Indikator dihitung dari metadata OpenAlex (CC0); bukan nilai resmi penyedia indeks lain.` },
         en: { locale: 'en-US', na: 'Not available', loading: 'Loading journal metrics…', failed: 'Journal metrics could not be loaded.',
@@ -45,7 +46,8 @@
             impact: 'Journal citation impact', types: 'Work types by year', access: 'Access status by year', accessNote: 'Share of works per OA status',
             countries: 'Contributor countries', countriesNote: 'A work can count for several countries', origin: 'Author affiliation', originNote: 'Works with at least one Unand author versus works without a Unand affiliation',
             unand: 'With Unand affiliation', external: 'Without Unand affiliation', articles: 'Most cited articles', columns: ['Title', 'Year', 'Citations', 'Access', 'SDG'],
-            sdgCard: 'SDGs of journal works', sdgNote: 'Unique works per goal; a work can count for several goals. Automatic OpenAlex classification, not a measure of impact.', score: 'classifier confidence', noSdg: 'No SDG labels on this journal\'s works yet.',
+            sdgCard: 'SDGs of journal works', sdgNote: 'Unique works per goal; a work can count for several goals. Automatic OpenAlex classification, not a measure of impact.', score: 'classifier confidence', noSdg: 'No SDG labels on this journal\'s works yet.', country: 'Country', moreGoals: n => `${n} more goals are listed in the values table.`, mapLoading: 'Loading map…', noCountries: 'No affiliation countries on this journal\'s works yet.',
+            mapMissing: list => `Not on the map: ${list}.`, mapNote: 'Bubble size is proportional to the number of works; hover or tap to see values',
             sdgNames: ['No poverty', 'Zero hunger', 'Good health and well-being', 'Quality education', 'Gender equality', 'Clean water and sanitation', 'Affordable and clean energy', 'Decent work and economic growth', 'Industry, innovation and infrastructure', 'Reduced inequalities', 'Sustainable cities and communities', 'Responsible consumption and production', 'Climate action', 'Life below water', 'Life on land', 'Peace, justice and strong institutions', 'Partnerships for the goals'],
             footer: n => `Top ${n} works by citations. Indicators are computed from OpenAlex metadata (CC0); they are not official values of any index provider.` },
     };
@@ -71,7 +73,7 @@
 .uam table{width:100%;border-collapse:collapse;font-size:.92em}.uam th,.uam td{padding:6px 8px;border-bottom:1px solid rgba(128,128,128,.25);text-align:left;vertical-align:top}
 .uam{position:relative}.uam-tip{position:absolute;z-index:20;pointer-events:none;background:rgba(17,24,39,.92);color:#fff;font-size:.8em;line-height:1.35;padding:5px 8px;border-radius:5px;white-space:nowrap;display:none}
 .uam-years th,.uam-years td{padding:4px 6px;font-size:.85em;text-align:right;white-space:nowrap}.uam-years th:first-child{text-align:left}
-.uam-wide{grid-column:1/-1}.uam-sdg{display:inline-block;min-width:1.7em;margin:1px 2px 1px 0;padding:0 5px;border:1px solid var(--uam-accent);border-radius:9px;font-size:.8em;text-align:center;color:var(--uam-accent)}
+.uam-wide{grid-column:1/-1}.uam-map{aspect-ratio:960/420;min-height:120px}.uam-map svg{height:auto}.uam-sdg{display:inline-block;min-width:1.7em;margin:1px 2px 1px 0;padding:0 5px;border:1px solid var(--uam-accent);border-radius:9px;font-size:.8em;text-align:center;color:var(--uam-accent)}
 .uam td.n,.uam th.n{text-align:right;white-space:nowrap}.uam-scroll{overflow-x:auto}.uam details{margin-top:6px;font-size:.85em}.uam summary{cursor:pointer}`;
     const el = (tag, attrs = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) v !== undefined && v !== null && n.setAttribute(k, v); n.append(...kids.filter(k => k !== null && k !== undefined)); return n; };
     // Hover/tap text lives in data-tip and is shown by the widget's own tooltip (instant, also on touch).
@@ -151,6 +153,44 @@
         });
         return s;
     }
+    // World map loaded once per page, only when a map card comes near the viewport.
+    let mapPromise;
+    const loadMap = () => mapPromise ||= fetch(new URL('assets/world-map-lite.json', base), { mode: 'cors' })
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); }).catch(error => { mapPromise = null; throw error; });
+    function countryMap(card, rows, mount) {
+        const holder = el('div', { class: 'uam-map' }, S.mapLoading), notes = el('div');
+        card.append(holder, notes, numbers([S.country, S.works], rows.map(([, name, count]) => [name, num(count)])));
+        const draw = map => {
+            const s = svg('svg', { viewBox: `0 0 ${map.width} ${map.height}`, role: 'img', 'aria-label': S.countries });
+            for (const d of map.borders) s.append(svg('path', { d, fill: 'currentColor', 'fill-opacity': .1 }));
+            const max = Math.max(1, ...rows.map(r => r[2])), place = ([lon, lat]) => [(lon + 180) * map.width / 360, (85 - lat) * map.height / 145], missing = [], bubbles = [];
+            // Largest first, so smaller bubbles stay on top and remain reachable.
+            for (const [code, name, count] of [...rows].sort((a, b) => b[2] - a[2])) {
+                if (!map.countries[code]) { missing.push(name); continue; }
+                const [cx, cy] = place(map.countries[code]), r = Math.max(2.5, 26 * Math.sqrt(count / max));
+                s.append(svg('circle', { cx, cy, r, fill: 'var(--uam-accent)', 'fill-opacity': .5, stroke: 'var(--uam-accent)', 'stroke-width': 1, 'vector-effect': 'non-scaling-stroke', 'data-country': code }));
+                bubbles.push({ cx, cy, r, tip: `${name}: ${num(count)}${S.worksUnit}` });
+            }
+            // Neighbouring bubbles overlap (e.g. Malaysia and Brunei), so the pointer picks the bubble whose edge is
+            // nearest, within its radius or 9 map units; the widget tooltip then reads the svg's data-tip.
+            const pick = event => {
+                const box = s.getBoundingClientRect(), x = (event.clientX - box.left) * map.width / box.width, y = (event.clientY - box.top) * map.height / box.height;
+                let best = null, score = Infinity;
+                for (const b of bubbles) { const d = Math.hypot(x - b.cx, y - b.cy); if (d <= Math.max(b.r, 9) && d - b.r < score) { best = b; score = d - b.r; } }
+                best ? s.setAttribute('data-tip', best.tip) : s.removeAttribute('data-tip');
+            };
+            s.addEventListener('pointermove', pick); s.addEventListener('pointerdown', pick);
+            holder.replaceChildren(s);
+            notes.replaceChildren(...[el('p', { class: 'uam-note' }, `${S.mapNote} · Natural Earth`), missing.length ? el('p', { class: 'uam-note' }, S.mapMissing(missing.join(', '))) : null].filter(Boolean));
+        };
+        const fallback = () => { holder.classList.remove('uam-map'); holder.replaceChildren(hbar(rows.slice(0, 10).map(([, name, count]) => [name, count]), { label: S.countries, width: Math.max(220, Math.round((mount.clientWidth || 640) - 30)) })); };
+        const start = () => loadMap().then(draw, fallback);
+        if (!rows.length) { holder.replaceChildren(el('p', {}, S.noCountries)); return; }
+        if ('IntersectionObserver' in window) {
+            const watch = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) { watch.disconnect(); start(); } }, { rootMargin: '400px' });
+            watch.observe(holder);
+        } else start();
+    }
     const numbers = (head, rows) => { const d = el('details', {}, el('summary', {}, S.numbers)), t = el('table'), tr = el('tr'); head.forEach((h, i) => tr.append(el('th', { class: i ? 'n' : '' }, h))); t.append(el('thead', {}, tr)); const b = el('tbody'); rows.forEach(r => { const row = el('tr'); r.forEach((v, i) => row.append(el('td', { class: i ? 'n' : '' }, String(v)))); b.append(row); }); t.append(b); d.append(el('div', { class: 'uam-scroll' }, t)); return d; };
     // Compact table with years across, shown under a chart.
     const yearTable = (rows, label) => { const head = el('tr', {}, el('th', {}, S.year)), values = el('tr', {}, el('th', {}, label));
@@ -219,18 +259,21 @@
         root.append(metricSection(data, el('div'), data.years.includes(Number(mount.dataset.uamYear)) ? Number(mount.dataset.uamYear) : data.default_year, mount));
         const grid = el('div', { class: 'uam-grid' });
         grid.append(card(S.types, null, ...stackedChart(data.types.rows, data.types.names, { label: S.types })),
-            card(S.access, S.accessNote, ...stackedChart(data.access.rows, data.access.names, { label: S.access, percent: true })),
-            card(S.countries, S.countriesNote, hbar(data.countries, { label: S.countries })));
+            card(S.access, S.accessNote, ...stackedChart(data.access.rows, data.access.names, { label: S.access, percent: true })));
+        // SDG labels of the journal's works (unique works per goal); no citing-works data in the widget.
+        const sdgRows = (data.sdgs || []).map(([n, count]) => [`SDG ${n} · ${S.sdgNames[n - 1]}`, count]);
+        // Top 8 goals in the chart keep the card level with its neighbour; every goal stays in the number table.
+        grid.append(card(S.sdgCard, S.sdgNote, ...(sdgRows.length ? [hbar(sdgRows.slice(0, 8), { label: S.sdgCard }), sdgRows.length > 8 ? el('p', { class: 'uam-note' }, S.moreGoals(sdgRows.length - 8)) : null,
+            numbers(['SDG', S.works], sdgRows.map(([name, count]) => [name, num(count)]))] : [el('p', {}, S.noSdg)])));
         const o = data.origin, total = o.unand + o.external, share = total ? o.unand / total * 100 : 0, bar = svg('svg', { viewBox: `0 0 ${W} 26`, role: 'img', 'aria-label': S.origin });
         bar.append(svg('rect', { x: 0, y: 4, width: W * share / 100, height: 18, fill: 'var(--uam-accent)' }, `${S.unand}: ${num(o.unand)}${S.worksUnit}`), svg('rect', { x: W * share / 100, y: 4, width: W * (1 - share / 100), height: 18, fill: 'currentColor', 'fill-opacity': .25 }, `${S.external}: ${num(o.external)}${S.worksUnit}`));
         grid.append(card(S.origin, S.originNote, bar,
             el('dl', {}, el('dt', {}, S.unand), el('dd', {}, `${num(o.unand)} (${pct(share)})`), el('dt', {}, S.external), el('dd', {}, `${num(o.external)} (${pct(total ? 100 - share : null)})`))));
-        // SDG labels of the journal's works (unique works per goal); no citing-works data in the widget.
-        const sdgRows = (data.sdgs || []).map(([n, count]) => [`SDG ${n} · ${S.sdgNames[n - 1]}`, count]);
-        // Full-width card: draw at the full column width so labels keep their size.
-        const sdgCard = card(S.sdgCard, S.sdgNote, sdgRows.length ? hbar(sdgRows, { label: S.sdgCard, width: Math.max(220, Math.round((mount.clientWidth || 640) - 30)) }) : el('p', {}, S.noSdg));
-        sdgCard.classList.add('uam-wide');
-        grid.append(sdgCard);
+        // Contributor countries as a full-width bubble map at the bottom (bubble area ∝ works).
+        const mapCard = card(S.countries, S.countriesNote);
+        mapCard.classList.add('uam-wide');
+        countryMap(mapCard, data.countries || [], mount);
+        grid.append(mapCard);
         root.append(grid, el('h3', {}, S.articles));
         const table = el('table'), head = el('tr'), body = el('tbody');
         S.columns.forEach((h, i) => head.append(el('th', { class: i === 1 || i === 2 ? 'n' : '' }, h)));

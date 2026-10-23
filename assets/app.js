@@ -561,10 +561,16 @@ function render() {
         line(panel(grid, 'Perjalanan publikasi jurnal', 'Jumlah karya jurnal menurut tahun publikasi. Klik tahun untuk mempersempit halaman ini.'), data.top.years, { onClick: drillYear });
         stacked(panel(grid, 'Jenis karya menurut tahun', 'Karya unik jurnal ini; jenis minor dapat berada di luar enam seri teratas.'), groupedYears('types'), data.top.types.slice(0, 6), { onClick: (y, s) => drill({ from: y.year, to: y.year, type: s.id }) });
         stacked(panel(grid, 'Komposisi akses per tahun', 'Proporsi status OA karya jurnal ini per tahun.'), data.oa_years.map(y => ({ ...y, values: y.oa })), data.top.oa, { percentage: true, onClick: (y, s) => drill({ from: y.year, to: y.year, oa: s.id }) });
-        groupBar(grid, 'Negara afiliasi kontributor', 'countries', 'country', 'Negara afiliasi penulis pada karya jurnal ini; satu karya dapat masuk beberapa negara.');
+        // SDG card beside author affiliation (as in the OJS widget): top 8 goals, the rest named in the note.
+        const goals = data.top.sdgs.filter(r => r.count > 0), others = goals.slice(8);
+        bar(panel(grid, 'SDG karya jurnal', `Karya unik per tujuan; satu karya dapat masuk beberapa tujuan. Klasifikasi otomatis OpenAlex, bukan ukuran dampak.${others.length ? ` Tujuan lain: ${others.map(r => `SDG ${r.id} (${num(r.count)})`).join(', ')}.` : ''} Klik tujuan untuk mempersempit halaman ini.`),
+            goals, { limit: 8, onClick: r => drill({ sdg: r.id }) });
         const own = data.top.journals.find(r => r.id === journal.id) || { count: 0, local: 0 };
         donut(panel(grid, 'Asal afiliasi penulis', 'Karya jurnal ini dengan sedikitnya satu authorship Unand dibanding tanpa afiliasi Unand.'),
             data.total ? [{ id: 'yes', name: 'Ada afiliasi Unand', count: own.local }, { id: 'no', name: 'Tanpa afiliasi Unand', count: own.count - own.local }] : [], r => drill({ local: r.id }));
+        // Contributor countries as a full-width bubble map at the bottom, Indonesia included.
+        collaborationMap(grid, { title: 'Negara afiliasi kontributor', includeHome: true, unit: 'karya',
+            note: 'Seluruh negara afiliasi penulis pada karya jurnal ini, termasuk Indonesia. Luas bubble sebanding dengan jumlah karya; satu karya dapat masuk beberapa negara. Hover, fokus, atau sentuh bubble untuk melihat jumlahnya.' });
     }
     else if (currentModule === 'journals' && !journal) {
         groupBar(grid, 'Sumber menurut keluaran', 'sources', 'source', 'Daftar sumber terpetakan; bukan daftar resmi seluruh jurnal aktif.');
@@ -651,9 +657,10 @@ function growthTimeline(grid) {
     details.append(raw);
     p.node.append(details);
 }
-function collaborationMap(grid) {
-    const rows = data.country_map.filter(row => row.id !== 'ID');
-    const p = panel(grid, 'Peta negara mitra penelitian', 'Seluruh negara/area di luar Indonesia pada filter aktif. Satu karya dapat masuk beberapa negara. Hover, fokus, atau sentuh bubble untuk melihat popup data. Interaksi peta tidak mengubah filter Jelajahi data.', true);
+// Bubble map of countries; Kolaborasi leaves Indonesia out (partners), a journal page keeps it (contributors).
+function collaborationMap(grid, { title = 'Peta negara mitra penelitian', note, includeHome = false, unit } = {}) {
+    const rows = data.country_map.filter(row => includeHome || row.id !== 'ID');
+    const p = panel(grid, title, note ?? 'Seluruh negara/area di luar Indonesia pada filter aktif. Satu karya dapat masuk beberapa negara. Hover, fokus, atau sentuh bubble untuk melihat popup data. Interaksi peta tidak mengubah filter Jelajahi data.', true);
     p.node.classList.add('world-map-panel');
     const draw = async () => {
         p.node.setAttribute('aria-busy', 'true');
@@ -664,7 +671,7 @@ function collaborationMap(grid) {
             const geography = await geographyPromise;
             if (!p.node.isConnected) return;
             p.body.replaceChildren();
-            countryBubbleMap(p, rows, geography);
+            countryBubbleMap(p, rows, geography, unit ? { unit } : {});
         }
         catch {
             if (!p.node.isConnected) return;
