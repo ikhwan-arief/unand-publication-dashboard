@@ -83,8 +83,9 @@ function section(container, title) {
     return node;
 }
 
-function fwciCard(container, charts, rows, year, ctx) {
-    const row = rows.find(r => r.year === year), title = ctx.fwciTitle;
+// FWCI card and its timeline share one two-column row.
+function fwciCard(row2, rows, year, ctx) {
+    const container = row2, row = rows.find(r => r.year === year), title = ctx.fwciTitle;
     const card = el('article', { class: 'panel journal-fwci', 'data-impact-fwci': '' });
     card.append(el('h3', {}, title), el('p', { class: 'panel-note' }, `Rerata FWCI karya yang terbit pada ${year} · ${ctx.populationLabel}`));
     // Institution rows hide small bases like the FWCI timeline; journal rows show them with a note.
@@ -104,7 +105,7 @@ function fwciCard(container, charts, rows, year, ctx) {
     card.append(help);
     if (row?.denominator) card.append(drillButton('Telusuri karya dengan FWCI valid', 'fwci', 'denominator', year, ctx.onDrill));
     container.append(card);
-    const chart = panel(charts, `Timeline ${title}`, `Rerata skor FWCI karya menurut tahun publikasi · ${ctx.populationLabel}. Klik tahun untuk memperbarui metrik. Nilai kosong membentuk jeda; acuan global tetap 1.`, ctx.fwciWide !== false);
+    const chart = panel(row2, `Timeline ${title}`, `Rerata skor FWCI karya menurut tahun publikasi · ${ctx.populationLabel}. Klik tahun untuk memperbarui metrik. Nilai kosong membentuk jeda; acuan global tetap 1.`);
     chart.node.dataset.impactTimeline = 'fwci';
     line(chart, rows, { value: 'value', label: `Rerata ${title}`, color: PALETTE[2], unit: 'FWCI', reference: 1, referenceLabel: 'Acuan global FWCI 1', footer: ctx.footer,
         tooltip: r => `${r.year}: FWCI ${r.status === 'small_sample' ? 'basis metrik kecil' : ratio(r.value)} · ${count(r.denominator)}/${count(r.total_documents)} karya · cakupan ${pct(r.coverage)}${r.window_incomplete ? ' · jendela sitasi belum penuh' : ''}${r.small_base ? ' · basis dokumen kecil' : ''}`,
@@ -116,8 +117,9 @@ function fwciCard(container, charts, rows, year, ctx) {
 export function renderImpactMetrics(container, series, ctx) {
     const node = section(container, ctx.title);
     node.append(el('p', { class: 'panel-note' }, ctx.note), yearPicker(ctx.years, ctx.snapshotYear, ctx.year, ctx.onYear));
-    const cards = el('div', { class: 'journal-ratio-grid' }), fwciContainer = el('div'), charts = el('div', { class: 'charts-grid journal-timelines' });
-    node.append(cards, fwciContainer, charts);
+    // Rows: ratio cards, ratio timelines, then FWCI card beside the FWCI timeline.
+    const cards = el('div', { class: 'journal-ratio-grid' }), charts = el('div', { class: 'charts-grid journal-timelines' }), fwciRow = el('div', { class: 'charts-grid journal-timelines journal-fwci-row' });
+    node.append(cards, charts, fwciRow);
     for (const [i, kind] of ['four_year', 'two_year'].entries()) {
         const row = series[kind].find(r => r.year === ctx.year), title = METRIC_TITLES[kind];
         const card = el('article', { class: 'panel journal-ratio', 'data-impact-metric': kind });
@@ -141,21 +143,22 @@ export function renderImpactMetrics(container, series, ctx) {
             tooltip: r => `${r.year}${r.status === 'provisional' ? ' (sementara)' : ''}: ${ratio(r.value)} · ${count(r.numerator)} sitasi ÷ ${count(r.denominator)} dokumen · publikasi ${period(r.publication_from, r.publication_to)} · sitasi ${period(r.citation_from, r.citation_to)}${r.small_base ? ' · basis dokumen kecil' : ''}`,
             onClick: r => ctx.onYear(r.year) });
     }
-    fwciCard(fwciContainer, charts, series.fwci, ctx.year, ctx);
+    fwciCard(fwciRow, series.fwci, ctx.year, ctx);
     return node;
 }
 
 // Journals tab: recap of every metric across all mapped Unand journals for the selected and the running year.
-export function renderJournalRecap(container, dataset, filter, onYear, onOpen) {
+export function renderJournalRecap(container, dataset, filter, onYear) {
     const node = section(container, 'Dampak sitasi jurnal Unand');
     if (!dataset) { node.append(el('p', { class: 'empty-state' }, 'Dataset metrik jurnal belum tersedia pada snapshot ini.')); return; }
     if (!dataset.journals.length) { node.append(el('p', { class: 'empty-state' }, 'Belum ada sumber bertipe jurnal yang terpetakan di bawah penerbit Unand.')); return; }
     const titles = { ...METRIC_TITLES, fwci: 'FWCI jurnal' };
     const year = metricYear(dataset.years, dataset.defaults.year, filter), recap = journalRecap(dataset, year), running = journalRecap(dataset, dataset.snapshot_year);
     const series = dataset.years.map(y => journalRecap(dataset, y));
-    node.append(el('p', { class: 'panel-note' }, `Rekap ${count(dataset.journals.length)} jurnal terpetakan di bawah penerbit Unand. Rerata antarjurnal memberi bobot sama pada setiap jurnal yang memiliki nilai; gabungan = jumlah pembilang ÷ jumlah penyebut seluruh jurnal, sehingga jurnal bervolume besar lebih berpengaruh. Klik nama jurnal untuk membuka halaman khusus jurnal tersebut. Data diperbarui: ${updated(dataset.updated_at)} WIB. Filter Jelajahi data tidak mengubah rekap ini.`),
+    node.append(el('p', { class: 'panel-note' }, `Rekap ${count(dataset.journals.length)} jurnal terpetakan di bawah penerbit Unand. Rerata antarjurnal memberi bobot sama pada setiap jurnal yang memiliki nilai; gabungan = jumlah pembilang ÷ jumlah penyebut seluruh jurnal, sehingga jurnal bervolume besar lebih berpengaruh. Nilai setiap jurnal tersedia pada tabel Jurnal Unand di bawah; klik nama jurnal untuk membuka halamannya. Data diperbarui: ${updated(dataset.updated_at)} WIB. Filter Jelajahi data tidak mengubah rekap ini.`),
         yearPicker(dataset.years, dataset.snapshot_year, year, onYear));
-    const cards = el('div', { class: 'journal-recap-grid' }), charts = el('div', { class: 'charts-grid journal-timelines' });
+    // Three recap cards and their three timelines each fill one three-column row.
+    const cards = el('div', { class: 'journal-recap-grid' }), charts = el('div', { class: 'journal-recap-grid journal-recap-timelines' });
     node.append(cards);
     for (const [i, kind] of ['four_year', 'two_year', 'fwci'].entries()) {
         const r = recap[kind], title = titles[kind];
@@ -183,7 +186,7 @@ export function renderJournalRecap(container, dataset, filter, onYear, onOpen) {
             card.append(help);
         } else formulaHelp(card, kind, 'Karya dipetakan ke jurnal melalui sumber utama; seluruh afiliasi dan korpus yang terkumpul disertakan.');
         cards.append(card);
-        const chart = panel(charts, `Timeline ${kind === 'fwci' ? title : title.toLowerCase()} · rerata antarjurnal`, 'Klik tahun untuk memperbarui rekap. Tahun tanpa jurnal bernilai membentuk jeda.');
+        const chart = panel(charts, `Timeline ${kind === 'fwci' ? title : title.toLowerCase()}`, 'Rerata antarjurnal per tahun metrik. Klik tahun untuk memperbarui rekap; tahun tanpa jurnal bernilai membentuk jeda.');
         chart.node.dataset.journalTimeline = kind;
         line(chart, series.map(s => ({ year: s.year, value: s[kind].mean, pooled: s[kind].pooled, n: s[kind].journals_with_value, status: s[kind].status })), {
             value: 'value', label: `${title} · rerata antarjurnal`, color: PALETTE[[0, 3, 2][i]], unit: kind === 'fwci' ? 'FWCI' : 'sitasi per dokumen pembagi',
@@ -193,20 +196,7 @@ export function renderJournalRecap(container, dataset, filter, onYear, onOpen) {
             onClick: s => onYear(s.year) });
     }
     node.append(charts);
-    const tablePanel = el('section', { class: 'panel table-panel journal-recap-table' });
-    tablePanel.append(el('h2', {}, `Nilai per jurnal · ${year}`), el('p', { class: 'panel-note' }, 'Klik nama jurnal untuk membuka halaman khusus jurnal: KPI, metrik, grafik, dan artikel hanya dari jurnal tersebut. Tanda * menandai basis kurang dari 30 dokumen.'));
-    const wrap = el('div', { class: 'table-scroll' }), table = el('table', { 'aria-label': `Metrik sitasi per jurnal ${year}` }), head = el('tr'), body = el('tbody');
-    for (const [label, cls] of [['Jurnal', ''], [titles.four_year, 'num'], [titles.two_year, 'num'], [titles.fwci, 'num'], [`Karya terbit ${year}`, 'num']]) head.append(el('th', { scope: 'col', class: cls }, label));
-    const mark = r => r ? `${ratio(r.value)}${r.small_base ? '*' : ''}` : 'Tidak tersedia';
-    for (const journal of dataset.journals) {
-        const pick = kind => journal.series[kind].find(r => r.year === year), fwci = pick('fwci');
-        const tr = el('tr'), name = el('td'), button = el('button', { class: 'work-title', type: 'button', 'data-journal-profile': journal.id }, journal.name);
-        button.onclick = () => onOpen(journal.id, year);
-        name.append(button);
-        tr.append(name, el('td', { class: 'num' }, mark(pick('four_year'))), el('td', { class: 'num' }, mark(pick('two_year'))), el('td', { class: 'num' }, mark(fwci)), el('td', { class: 'num' }, count(fwci?.total_documents ?? 0)));
-        body.append(tr);
-    }
-    const thead = el('thead'); thead.append(head); table.append(thead, body); wrap.append(table); tablePanel.append(wrap); node.append(tablePanel);
+    return year;
 }
 
 // Journal page header and metric panel: data from journal-metrics.json for this journal only.
@@ -215,6 +205,15 @@ export function renderJournalHeader(container, dataset, journal, onBack) {
     back.onclick = onBack;
     header.append(back, el('h2', { id: 'journal-page-title' }, journal.name),
         el('p', { class: 'panel-note' }, `${journal.issn.length ? 'ISSN ' + journal.issn.join(', ') + ' · ' : ''}Halaman khusus jurnal: KPI, metrik, grafik, dan daftar artikel hanya memuat karya yang terbit pada jurnal ini (seluruh afiliasi dan korpus terkumpul). Data diperbarui: ${updated(dataset.updated_at)} WIB.`));
+    // Embed instructions for any OJS theme: one script (site-wide) and one placeholder on a static page.
+    const script = new URL('assets/widget.js', location.href.split('#')[0]).href, embed = el('details', { class: 'journal-embed' });
+    embed.append(el('summary', {}, 'Pasang metrik ini sebagai halaman di OJS'),
+        el('p', {}, '1. Tambahkan skrip berikut sekali, misalnya lewat plugin Custom Header (bagian footer) di OJS:'),
+        el('pre', {}, el('code', {}, `<script src="${script}" defer></script>`)),
+        el('p', {}, '2. Buat halaman lewat Static Pages, lalu tulis penanda ini sebagai isi halaman:'),
+        el('pre', {}, el('code', {}, `[unand-metrics ${journal.id}]`)),
+        el('p', {}, 'Widget mengikuti font dan warna tema jurnal, tanpa navigasi dashboard, dan hanya memuat dua berkas kecil (sekitar 10 KB terkompresi). Panduan lengkap: docs/WIDGET.md di repositori sumber.'));
+    header.append(embed);
     container.append(header);
     return header;
 }
@@ -225,9 +224,7 @@ export function renderJournalMetrics(container, dataset, journal, filter, { onYe
         populationLabel: 'karya jurnal ini',
         populationText: 'Hanya karya yang dipetakan ke jurnal ini melalui sumber utama; seluruh afiliasi dan korpus yang terkumpul disertakan.',
         note: `Metrik ${journal.name} untuk tahun terpilih. Filter pada halaman jurnal tidak mengubah panel ini. ${count(journal.excluded_publication_years)} dokumen tanpa tahun publikasi layak tidak digunakan.`,
-        footer: `${journal.name} · Seluruh afiliasi dan korpus terkumpul · Snapshot ${dataset.updated_at}`,
-        // Half width, so Sitasi per tahun can share its row.
-        fwciWide: false });
+        footer: `${journal.name} · Seluruh afiliasi dan korpus terkumpul · Snapshot ${dataset.updated_at}` });
 }
 
 // Citations per year for one journal, with three-year totals for the window ending at the selected metric year.
@@ -246,4 +243,61 @@ export function renderJournalCitations(container, dataset, journal, filter, onYe
     totals.append(el('dt', {}, `Total sitasi ${span}`), el('dd', { 'data-citation-total': 'all' }, count(window.citations)),
         el('dt', {}, `Total sitasi ${span} kepada karya terbitan ${span}`), el('dd', { 'data-citation-total': 'recent' }, count(window.recent_citations)));
     p.node.append(totals, el('p', { class: 'panel-note' }, `Jendela tiga tahun berakhir pada tahun metrik ${year}. Angka pertama menjumlahkan sitasi pada ${span} kepada seluruh karya jurnal, berapa pun tahun terbitnya. Angka kedua hanya menghitung sitasi kepada ${count(window.recent_documents)} karya yang terbit pada ${span}, semua jenis dokumen. Sitasi mandiri tercakup.${window.partial ? ` Tahun ${dataset.snapshot_year} belum lengkap; total dapat bertambah.` : ''}`));
+}
+
+// The single journals table: every mapped Unand journal with filter-dependent output (works, external share)
+// and metric-year values (both ratios, FWCI). `sources` maps journal ID to its row in the active filter.
+export function renderJournalTable(section, dataset, year, sources, onOpen) {
+    const titles = { ...METRIC_TITLES, fwci: 'FWCI jurnal' }, metric = (j, kind) => j.series[kind].find(r => r.year === year) || null;
+    const rows = dataset.journals.map(j => {
+        const s = sources.get(j.id), works = s?.count || 0;
+        return { journal: j, works, external: works ? (works - s.local) / works * 100 : null,
+            four_year: metric(j, 'four_year'), two_year: metric(j, 'two_year'), fwci: metric(j, 'fwci') };
+    });
+    const columns = [['name', 'Jurnal', ''], ['works', 'Karya dalam filter', 'num'], ['external', '% tanpa afiliasi Unand', 'num'],
+        ['four_year', `${titles.four_year} ${year}`, 'num'], ['two_year', `${titles.two_year} ${year}`, 'num'], ['fwci', `${titles.fwci} ${year}`, 'num']];
+    const value = (row, key) => key === 'name' ? row.journal.name : ['four_year', 'two_year', 'fwci'].includes(key) ? row[key]?.value ?? null : row[key];
+    let sortKey = 'works', direction = -1, query = '';
+    const head = el('div', { class: 'panel-head' }), labels = el('div');
+    labels.append(el('h2', {}, 'Jurnal Unand'), el('p', {}, `${count(dataset.journals.length)} jurnal terpetakan di bawah penerbit Unand. Karya dan % tanpa afiliasi Unand mengikuti filter Jelajahi data; % = karya tanpa authorship Unand ÷ karya jurnal dalam filter × 100%. Kolom metrik mengikuti tahun metrik ${year} dengan cakupan seluruh afiliasi dan korpus. Tanda * = basis kurang dari 30 dokumen. Klik judul kolom untuk mengurutkan; klik nama jurnal untuk membuka halamannya. Bukan daftar resmi jurnal aktif.`));
+    head.append(labels);
+    const search = el('input', { class: 'search-input', type: 'search', placeholder: 'Cari nama jurnal', 'aria-label': 'Cari nama jurnal' });
+    const toolbar = el('div', { class: 'table-toolbar' }), status = el('span', { class: 'journal-search-status', role: 'status', 'aria-live': 'polite' });
+    toolbar.append(search, status);
+    const wrap = el('div', { class: 'table-scroll' }), table = el('table', { 'aria-label': 'Jurnal Unand dan metriknya' }), thead = el('thead'), headRow = el('tr'), body = el('tbody');
+    const mark = r => r ? `${ratio(r.value)}${r.small_base ? '*' : ''}` : 'Tidak tersedia';
+    const draw = () => {
+        const term = query.normalize('NFKD').replace(/\p{M}/gu, '').toLocaleLowerCase('id');
+        const visible = rows.filter(r => r.journal.name.normalize('NFKD').replace(/\p{M}/gu, '').toLocaleLowerCase('id').includes(term))
+            .sort((a, b) => {
+                const x = value(a, sortKey), y = value(b, sortKey);
+                if (x === null || y === null) return x === y ? a.journal.name.localeCompare(b.journal.name, 'id') : x === null ? 1 : -1;
+                return (typeof x === 'string' ? x.localeCompare(y, 'id') : x - y) * direction || a.journal.name.localeCompare(b.journal.name, 'id');
+            });
+        body.replaceChildren();
+        for (const r of visible) {
+            const tr = el('tr', { 'data-journal-row': r.journal.id }), name = el('td'), j = r.journal;
+            const button = el('button', { class: 'work-title', type: 'button', 'data-journal-profile': j.id }, j.name);
+            button.onclick = () => onOpen(j.id, year);
+            const meta = [j.issn.length ? 'ISSN ' + j.issn.join(', ') : 'ISSN tidak tersedia', `DOAJ ${j.doaj === null || j.doaj === undefined ? 'tidak tersedia' : j.doaj ? 'ya' : 'tidak'}`,
+                `APC ${j.apc_usd === null || j.apc_usd === undefined ? 'tidak tersedia' : 'US$ ' + count(j.apc_usd)}`].join(' · ');
+            name.append(button, el('span', { class: 'work-source' }, meta));
+            tr.append(name, el('td', { class: 'num', 'data-col': 'works' }, count(r.works)), el('td', { class: 'num', 'data-col': 'external' }, pct(r.external)),
+                el('td', { class: 'num', 'data-col': 'four_year' }, mark(r.four_year)), el('td', { class: 'num', 'data-col': 'two_year' }, mark(r.two_year)), el('td', { class: 'num', 'data-col': 'fwci' }, mark(r.fwci)));
+            body.append(tr);
+        }
+        if (!visible.length) { const tr = el('tr'); tr.append(el('td', { colspan: columns.length }, 'Tidak ada jurnal yang cocok.')); body.append(tr); }
+        status.textContent = `${visible.length} jurnal ditampilkan`;
+        for (const th of headRow.children) th.setAttribute('aria-sort', th.dataset.key === sortKey ? (direction > 0 ? 'ascending' : 'descending') : 'none');
+    };
+    for (const [key, label, cls] of columns) {
+        const th = el('th', { scope: 'col', class: cls, 'data-key': key }), button = el('button', { class: 'sort-button', type: 'button' }, label);
+        button.onclick = () => { direction = sortKey === key ? -direction : key === 'name' ? 1 : -1; sortKey = key; draw(); };
+        th.append(button); headRow.append(th);
+    }
+    search.oninput = () => { query = search.value.trim(); draw(); };
+    thead.append(headRow); table.append(thead, body); wrap.append(table);
+    section.replaceChildren(head, toolbar, wrap);
+    draw();
+    section.setAttribute('aria-busy', 'false');
 }

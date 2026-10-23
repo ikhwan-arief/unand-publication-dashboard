@@ -130,7 +130,8 @@ export function buildJournalMetrics(works, entities, manifest) {
     const snapshotYear = snapshotYearOf(manifest);
     const years = Array.from({ length: 7 }, (_, i) => snapshotYear - 6 + i);
     const journals = Object.entries(entities.sources).filter(([, s]) => s.unand_publisher && s.type === 'journal')
-        .map(([id, source]) => ({ id, name: source.name || id, issn: source.issn || [], works: [] }));
+        .map(([id, source]) => ({ id, name: source.name || id, issn: source.issn || [], doaj: typeof source.doaj === 'boolean' ? source.doaj : null,
+            apc_usd: validNumber(source.apc_usd) ? source.apc_usd : null, works: [] }));
     const byID = new Map(journals.map(j => [j.id, j])), seen = new Set();
     for (const work of works) {
         if (!work.id || seen.has(work.id)) throw new Error('Invalid or duplicate work ID in journal metrics.');
@@ -149,6 +150,36 @@ export function buildJournalMetrics(works, entities, manifest) {
     return { schema_version: 1, updated_at: manifest.updated_at, snapshot_year: snapshotYear, years,
         citation_history_from: snapshotYear - 9, citation_history_to: snapshotYear, policy: JOURNAL_METRIC_POLICY,
         defaults: { source: journals[0]?.id || '', year: defaultYear }, journals };
+}
+// Compact, precomputed data for the embeddable journal widget (one small file per journal).
+// `journal` is a finished entry of buildJournalMetrics(); `works` are that journal's published works.
+const compact = (value, digits = 4) => validNumber(value) ? Math.round(value * 10 ** digits) / 10 ** digits : null;
+export function journalWidgetData(journal, works, entities, manifest, dataset) {
+    const filter = { from: '', to: manifest.default_filter.to, scope: 'published', corpus: 'all', source: journal.id };
+    const summary = summarize(works, entities, filter, manifest, [], null, { ratios: false }), k = summary.kpis;
+    const currentYear = dataset.snapshot_year, dated = works.filter(w => !growthExclusion(w, currentYear));
+    const years = [...new Set(dated.map(w => w.year))].sort((a, b) => a - b);
+    const types = summary.top.types.slice(0, 5).map(t => t.id), statuses = summary.top.oa.map(r => r.id);
+    // Year rows: [year, total, ...counts per named category]; dates failing the growth policy are left out.
+    const perYear = (key, names) => years.map(year => {
+        const annual = dated.filter(w => w.year === year);
+        return [year, annual.length, ...names.map(name => annual.filter(w => key(w) === name).length)];
+    });
+    const own = summary.top.journals.find(r => r.id === journal.id) || { count: 0, local: 0 };
+    const row = r => ({ year: r.year, value: compact(r.value), numerator: compact(r.numerator), denominator: r.denominator,
+        status: r.status, small_base: r.small_base, ...(r.total_documents !== undefined ? { total_documents: r.total_documents, coverage: compact(r.coverage, 2), window_incomplete: r.window_incomplete } : {}),
+        ...(r.publication_from !== undefined ? { publication_from: r.publication_from, publication_to: r.publication_to, citation_from: r.citation_from, citation_to: r.citation_to } : {}) });
+    return { schema_version: 1, updated_at: manifest.updated_at, snapshot_year: currentYear, default_year: dataset.defaults.year, years: dataset.years,
+        journal: { id: journal.id, name: journal.name, issn: journal.issn, doaj: journal.doaj ?? null, apc_usd: journal.apc_usd ?? null },
+        kpis: { publications: k.publications, citations: k.citations, oa: compact(k.oa, 2), international: compact(k.international, 2),
+            fwci: compact(k.fwci), fwci_n: k.fwci_n, fwci_coverage: compact(k.fwci_coverage, 2), top10: k.top10, eligible: k.eligible },
+        series: { four_year: journal.series.four_year.map(row), two_year: journal.series.two_year.map(row), fwci: journal.series.fwci.map(row) },
+        citations: journal.citations,
+        types: { names: types, rows: perYear(w => w.type, types) },
+        access: { names: statuses, rows: perYear(w => w.oa_status, statuses) },
+        countries: summary.top.countries.slice(0, 8).map(r => [r.name, r.count]),
+        origin: { unand: own.local, external: own.count - own.local },
+        articles: summary.publications.slice(0, 20).map(w => ({ title: w.title, year: w.year, citations: w.citations, doi: w.doi || null, oa: w.oa_status })) };
 }
 // Recap across all mapped journals: an unweighted mean of journal values plus a pooled ratio of summed parts.
 export function journalRecap(dataset, year) {
@@ -542,7 +573,7 @@ export function summarize(works, entities, filter, manifest, history = [], table
         const ranked = (limit ? all.slice(0, limit) : all).map((row, i) => ({ ...row, rank: i + 1 }));
         const search = String(tableOptions.search || '').trim().toLocaleLowerCase('id-ID');
         const rows = search ? ranked.filter(row => `${row.name} ${row.id}`.toLocaleLowerCase('id-ID').includes(search)) : ranked;
-        const pageSize = 50, page = Math.max(0, Math.min(Math.floor(Number(tableOptions.page) || 0), Math.max(0, Math.ceil(rows.length / pageSize) - 1)));
+        const pageSize = tableOptions.pageSize === 'all' ? Math.max(rows.length, 1) : 50, page = Math.max(0, Math.min(Math.floor(Number(tableOptions.page) || 0), Math.max(0, Math.ceil(rows.length / pageSize) - 1)));
         return { rows: rows.slice(page * pageSize, (page + 1) * pageSize), total: rows.length,
             eligible: all.length, limit, page, page_size: pageSize };
     }

@@ -1,5 +1,5 @@
 import { MODULES, SDGS, METRIC_KINDS, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod } from './metrics.js';
-import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderJournalMetrics, renderJournalCitations, METRIC_TITLES, metricYear } from './journal-panel.js';
+import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderJournalMetrics, renderJournalCitations, renderJournalTable, METRIC_TITLES, metricYear } from './journal-panel.js';
 import { EXPORT_CONTROLS, SHOW_AUDIT_TAB, CONTENT_PROTECTION } from './config.js';
 import { el, panel, bar, line, donut, stacked, scatter, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE } from './charts.js';
 const $ = id => document.getElementById(id), nf = new Intl.NumberFormat('id-ID'), df = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
@@ -284,7 +284,7 @@ function selectors(container) {
     const configs = {
         authors: [['author', 'Penulis Unand', data.top.authors]], collaboration: [['partner', 'Institusi mitra', data.top.partners], ['country', 'Negara', data.top.countries]],
         topics: [['topic', 'Topik terpetakan', data.facets.topics]], sdgs: [['sdg', 'Tujuan SDG', Array.from({ length: 17 }, (_, i) => ({ id: String(i + 1), name: `SDG ${i + 1} · ${SDGS[i]}` }))]],
-        funding: [['funder', 'Pendana', data.top.funders], ['award', 'Hibah', data.top.awards]], journals: [['source', 'Sumber', data.top.sources]],
+        funding: [['funder', 'Pendana', data.top.funders], ['award', 'Hibah', data.top.awards]],
         publications: [['topic', 'Topik terpetakan', data.facets.topics], ['source', 'Sumber', data.top.sources]],
         audit: [['audit', 'Jenis pemeriksaan', [{ id: 'doi', name: 'Tanpa DOI' }, { id: 'abstract', name: 'Tanpa abstrak' }, { id: 'source', name: 'Sumber tidak diketahui' }, { id: 'date', name: 'Tanggal tidak wajar' }, { id: 'affiliation', name: 'Afiliasi belum lengkap' }, {id:'author_id',name:'Penulis tanpa ID profil'}, { id: 'retracted', name: 'Flag retraksi' }]]],
     };
@@ -376,6 +376,24 @@ function topicSelector(form, rows) {
     topicLabelNode.append(topic);
     form.append(groupLabelNode, subfieldLabelNode, topicLabelNode, el('small', { id: 'topic-help', class: 'topic-help' }, 'Pilih bidang, subbidang, lalu topik. Filter diterapkan setelah topik dipilih.'));
 }
+// The single Jurnal Unand table: dataset metrics merged with every journal's output in the active filter.
+async function journalTable(content) {
+    const section = el('section', { class: 'panel table-panel journal-table', 'aria-busy': 'true' });
+    section.append(el('p', { class: 'panel-note' }, 'Memuat tabel jurnal…'));
+    content.append(section);
+    if (!journalDataset?.journals.length) { section.replaceChildren(el('p', { class: 'empty-state' }, 'Belum ada jurnal terpetakan di bawah penerbit Unand.')); section.setAttribute('aria-busy', 'false'); return; }
+    const thisRender = renderID, year = metricYear(journalDataset.years, journalDataset.defaults.year, filter);
+    try {
+        const result = await task('entities', { kind: 'sources', pageSize: 'all' });
+        if (thisRender !== renderID) return;
+        renderJournalTable(section, journalDataset, year, new Map(result.rows.map(r => [r.id, r])), openJournal);
+    }
+    catch (error) {
+        if (thisRender !== renderID) return;
+        section.replaceChildren(el('p', { class: 'empty-state' }, 'Tabel jurnal belum dapat ditampilkan. Muat ulang halaman.'));
+        section.setAttribute('aria-busy', 'false');
+    }
+}
 // Context above a drill list: which metric, year and population the listed works form.
 function metricContext(content, journal) {
     const kind = filter.metricKind, year = Number(filter.metricYear);
@@ -420,14 +438,10 @@ function render() {
         intro(content, filter.scope === 'funded' ? 'Cakupan ini berisi karya yang mencantumkan Unand sebagai pendana. Afiliasi penulis dapat berasal dari institusi lain.' : 'Cakupan ini berisi karya terbitan sumber di bawah penerbit Unand, termasuk artikel penulis dari luar Unand.');
     kpis(content);
     if (currentModule === 'journals' && !journal)
-        renderJournalRecap(content, journalDataset, filter, year => setHash('journals', { ...filter, metricYear: year }), openJournal);
-    if (journal && !filter.metricKind) {
-        const onYear = year => setHash('journals', { ...filter, metricYear: year });
-        const metrics = renderJournalMetrics(content, journalDataset, journal, filter, { onYear,
+        renderJournalRecap(content, journalDataset, filter, year => setHash('journals', { ...filter, metricYear: year }));
+    if (journal && !filter.metricKind)
+        renderJournalMetrics(content, journalDataset, journal, filter, { onYear: year => setHash('journals', { ...filter, metricYear: year }),
             onDrill: (kind, part, year) => setHash('journals', { ...metricDrill(year, kind, part, journal.id) }) });
-        // Sitasi per tahun sits beside Timeline FWCI jurnal in the metric timelines grid.
-        renderJournalCitations(metrics.querySelector('.journal-timelines'), journalDataset, journal, filter, onYear);
-    }
     if (currentModule === 'citations') {
         const ratios = data.citation_ratios, year = metricYear(ratios.years, ratios.default_year, filter);
         renderImpactMetrics(content, ratios, { title: 'Indikator dampak sitasi', fwciTitle: 'FWCI', years: ratios.years, snapshotYear: ratios.snapshot_year, year,
@@ -541,11 +555,13 @@ function render() {
         entityTable(content, 'funders');
     }
     else if (journal && !filter.metricKind) {
-        // Every chart below uses the journal-only summary; clicks narrow this journal page.
+        // Two per row: citations per year | publications per year, types | access, countries | affiliation origin.
+        // Sitasi per tahun is fixed for the journal; the other charts use the journal-only summary and narrow this page.
+        renderJournalCitations(grid, journalDataset, journal, filter, year => setHash('journals', { ...filter, metricYear: year }));
         line(panel(grid, 'Perjalanan publikasi jurnal', 'Jumlah karya jurnal menurut tahun publikasi. Klik tahun untuk mempersempit halaman ini.'), data.top.years, { onClick: drillYear });
         stacked(panel(grid, 'Jenis karya menurut tahun', 'Karya unik jurnal ini; jenis minor dapat berada di luar enam seri teratas.'), groupedYears('types'), data.top.types.slice(0, 6), { onClick: (y, s) => drill({ from: y.year, to: y.year, type: s.id }) });
-        groupBar(grid, 'Negara afiliasi kontributor', 'countries', 'country', 'Negara afiliasi penulis pada karya jurnal ini; satu karya dapat masuk beberapa negara.');
         stacked(panel(grid, 'Komposisi akses per tahun', 'Proporsi status OA karya jurnal ini per tahun.'), data.oa_years.map(y => ({ ...y, values: y.oa })), data.top.oa, { percentage: true, onClick: (y, s) => drill({ from: y.year, to: y.year, oa: s.id }) });
+        groupBar(grid, 'Negara afiliasi kontributor', 'countries', 'country', 'Negara afiliasi penulis pada karya jurnal ini; satu karya dapat masuk beberapa negara.');
         const own = data.top.journals.find(r => r.id === journal.id) || { count: 0, local: 0 };
         donut(panel(grid, 'Asal afiliasi penulis', 'Karya jurnal ini dengan sedikitnya satu authorship Unand dibanding tanpa afiliasi Unand.'),
             data.total ? [{ id: 'yes', name: 'Ada afiliasi Unand', count: own.local }, { id: 'no', name: 'Tanpa afiliasi Unand', count: own.count - own.local }] : [], r => drill({ local: r.id }));
@@ -559,8 +575,7 @@ function render() {
         origins.node.classList.add('source-origins');
         origins.body.style.height = '510px';
         stacked(origins, data.top.journals.map(r => ({ year: r.name, total: r.count, source: r.id, values: { local: r.local, external: r.count - r.local } })), [{ id: 'local', name: 'Ada afiliasi Unand' }, { id: 'external', name: 'Tanpa afiliasi Unand' }], { percentage: true, horizontal: true, onClick: (y, s) => drill({ source: y.source, local: s.id === 'local' ? 'yes' : 'no' }) });
-        entityTable(content, 'sources');
-        intro(content, `${num(manifest.publisher_source_count ?? 0)} sumber terpetakan di bawah penerbit Unand. Sumber meliputi tipe jurnal atau tipe lain sesuai metadata. Status DOAJ, ISSN dan APC tersedia pada detail publikasi jika sumbernya diperkaya.`);
+        journalTable(content);
     }
     else if (currentModule === 'repositories') {
         const c = data.coverage, coverage = [['Abstrak', c.abstract], ['PDF layanan konten', c.pdf], ['TEI XML', c.xml], ['Salinan repositori Unand', c.repo], ['Lisensi diketahui', c.license]].map(([name, count]) => ({ name: `${name} · ${num(count)} karya`, count: data.total ? count / data.total * 100 : 0 }));

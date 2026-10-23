@@ -40,6 +40,7 @@ jobs:
           const entries = [f.entities, f.history, ...Object.values(f.overviews), ...f.works, ...manifest.assets];
           if (f.journal_metrics) entries.push(f.journal_metrics);
           else if (manifest.metric_policies?.journal_citation_ratios) throw Error('Required journal metrics missing');
+          if (f.journal_widgets) entries.push(...f.journal_widgets);
           for (const entry of entries) {
             const source = path.resolve(root, entry.path);
             if (entry.path.split('/').includes('..') || !source.startsWith(root + path.sep) || !fs.realpathSync(source).startsWith(root + path.sep) || !/^(assets\/|data\/|index\.html$|\.nojekyll$)/.test(entry.path) || !fs.lstatSync(source).isFile()) throw Error('Unsafe snapshot path');

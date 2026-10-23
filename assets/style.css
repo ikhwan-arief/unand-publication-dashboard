@@ -46,7 +46,37 @@
   font-weight:600
 }
 .journal-fwci {
-  margin:0 0 20px
+  margin:0;
+  min-width:0;
+  overflow-wrap:anywhere
+}
+.journal-recap-timelines {
+  align-items:stretch;
+  margin-top:0
+}
+.journal-table {
+  margin:20px 0
+}
+.sort-button {
+  border:0;
+  background:none;
+  padding:0;
+  font:inherit;
+  color:inherit;
+  text-align:inherit;
+  cursor:pointer
+}
+.sort-button::after {
+  content:' ↕';
+  opacity:.45
+}
+th[aria-sort="ascending"] .sort-button::after {
+  content:' ↑';
+  opacity:1
+}
+th[aria-sort="descending"] .sort-button::after {
+  content:' ↓';
+  opacity:1
 }
 .journal-fwci h3 {
   font-family:Georgia,serif;
@@ -158,6 +188,23 @@
   font-family:Georgia,serif;
   font-size:28px;
   color:var(--forest)
+}
+.journal-embed {
+  margin-top:10px;
+  font-size:13px
+}
+.journal-embed summary {
+  color:var(--green);
+  cursor:pointer;
+  font-weight:600
+}
+.journal-embed pre {
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  background:#f1f4ef;
+  border-radius:8px;
+  padding:10px 12px;
+  font-size:12px
 }
 #filters-form select:disabled {
   opacity:.6;

@@ -244,8 +244,9 @@ export function stacked(p, years, series, { percentage = false, horizontal = fal
         empty(p);
         return;
     }
+    // Only horizontal bars shorten labels; an explicit undefined callback would hide vertical category labels (years).
     const categoryAxis = { stacked: true, grid: { display: false }, ticks: { font: { size: 10 },
-        callback: horizontal ? function (value) { const label = String(this.getLabelForValue(value)), limit = this.chart.width < 500 ? 22 : 45; return label.length > limit ? label.slice(0, limit - 2) + '…' : label; } : undefined } };
+        ...(horizontal ? { callback: function (value) { const label = String(this.getLabelForValue(value)), limit = this.chart.width < 500 ? 22 : 45; return label.length > limit ? label.slice(0, limit - 2) + '…' : label; } } : {}) } };
     const valueAxis = { stacked: true, beginAtZero: true, max: percentage ? 100 : undefined, grid: { color: '#edf0e9' },
         ticks: { font: { size: 9 }, callback: percentage ? value => value + '%' : undefined } };
     chart(p, 'bar', { labels: years.map(y => y.year), datasets: series.map((s, i) => ({ label: s.name,
