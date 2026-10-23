@@ -45,27 +45,73 @@ export function journalContribution(work, kind, year) {
     const window = journalWindow(kind, year);
     return work.citation_years.reduce((sum, [y, count]) => y >= window.citation_from && y <= window.citation_to ? sum + count : sum, 0);
 }
-export function journalMetricMember(work, entities, filter, snapshotYear) {
-    const year = Number(filter.journalYear), kind = filter.journalMetric;
-    if (!['four_year', 'two_year', 'fwci'].includes(kind) || !['numerator', 'denominator'].includes(filter.journalPart) ||
-        !Number.isInteger(year) || year < snapshotYear - 6 || year > snapshotYear ||
-        entities.sources[filter.journalSource]?.type !== 'journal' || !entities.sources[filter.journalSource]?.unand_publisher ||
-        work.source !== filter.journalSource || !work.scopes.includes('published') || !Number.isInteger(work.year)) return false;
+export const METRIC_KINDS = ['four_year', 'two_year', 'fwci'];
+// Drill membership. With `journal`: one Unand journal, fixed full-corpus scope. Without: the active filter minus its period.
+export function citationMetricMember(work, entities, filter, snapshotYear) {
+    const year = Number(filter.metricYear), kind = filter.metricKind;
+    if (!METRIC_KINDS.includes(kind) || !['numerator', 'denominator'].includes(filter.metricPart) ||
+        !Number.isInteger(year) || year < snapshotYear - 6 || year > snapshotYear || !Number.isInteger(work.year)) return false;
+    if (filter.journal && (entities.sources[filter.journal]?.type !== 'journal' || !entities.sources[filter.journal]?.unand_publisher ||
+        work.source !== filter.journal || !work.scopes.includes('published'))) return false;
     const window = journalWindow(kind, year);
     if (work.year < window.publication_from || work.year > window.publication_to) return false;
     if (kind === 'fwci') return validNumber(work.fwci) && work.fwci >= 0;
     if (kind === 'four_year') return JOURNAL_METRIC_POLICY.four_year_types.includes(work.type);
-    return filter.journalPart === 'numerator' || JOURNAL_METRIC_POLICY.two_year_denominator_types.includes(work.type);
+    return filter.metricPart === 'numerator' || JOURNAL_METRIC_POLICY.two_year_denominator_types.includes(work.type);
 }
-export function journalMetricDrill(source, year, kind, part) {
-    return { scope: 'published', corpus: 'all', from: '', to: '', journalSource: source,
-        journalYear: year, journalMetric: kind, journalPart: part };
+export function metricDrill(year, kind, part, journal = '') {
+    return journal ? { journal, metricYear: year, metricKind: kind, metricPart: part } : { metricYear: year, metricKind: kind, metricPart: part };
+}
+export const snapshotYearOf = manifest => Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Jakarta', year: 'numeric' }).format(new Date(manifest.updated_at)));
+// Four-year (CiteScore-style), two-year (JIF-style) and FWCI-mean series for any set of works.
+export function citationRatioSeries(works, years, snapshotYear, { breakdown = true, fwci = true } = {}) {
+    const series = { four_year: [], two_year: [] };
+    for (const kind of ['four_year', 'two_year']) for (const year of years) {
+        const window = journalWindow(kind, year), groups = new Map();
+        let numerator = 0, denominator = 0, targets = 0, retracted = 0, unknownTypes = 0;
+        for (const work of works) {
+            if (!Number.isInteger(work.year) || work.year < window.publication_from || work.year > window.publication_to) continue;
+            const eligible = (kind === 'four_year' ? JOURNAL_METRIC_POLICY.four_year_types : JOURNAL_METRIC_POLICY.two_year_denominator_types).includes(work.type);
+            const contribution = kind === 'four_year' && !eligible ? 0 : journalContribution(work, kind, year);
+            const target = kind === 'two_year' || eligible;
+            numerator += contribution;
+            denominator += Number(eligible);
+            targets += Number(target);
+            retracted += Number(Boolean(work.retracted));
+            unknownTypes += Number(!knownWorkTypes.has(work.type));
+            if (!breakdown) continue;
+            const key = `${work.year}|${work.type}`;
+            const group = groups.get(key) || { year: work.year, type: work.type, works: 0, targets: 0, citations: 0, denominator: 0, retracted: 0 };
+            group.works++; group.targets += Number(target); group.citations += contribution;
+            group.denominator += Number(eligible); group.retracted += Number(Boolean(work.retracted));
+            groups.set(key, group);
+        }
+        if (![numerator, denominator].every(Number.isSafeInteger)) throw new Error('Citation metric count exceeds safe integer range.');
+        series[kind].push({ year, ...window, numerator, denominator, target_documents: targets,
+            value: denominator ? numerator / denominator : null, status: denominator ? (year === snapshotYear ? 'provisional' : 'complete') : 'unavailable',
+            small_base: denominator > 0 && denominator < JOURNAL_METRIC_POLICY.small_base,
+            retracted, unknown_types: unknownTypes,
+            ...(breakdown ? { breakdown: [...groups.values()].sort((a, b) => a.year - b.year || a.type.localeCompare(b.type)) } : {}) });
+    }
+    if (!fwci) return series;
+    series.fwci = years.map(year => {
+        const annual = works.filter(w => w.year === year);
+        const eligible = annual.filter(w => validNumber(w.fwci) && w.fwci >= 0);
+        const sum = eligible.reduce((n, w) => n + w.fwci, 0);
+        if (!Number.isFinite(sum)) throw new Error('Invalid FWCI aggregate.');
+        return { year, ...journalWindow('fwci', year), numerator: sum, denominator: eligible.length,
+            total_documents: annual.length, coverage: annual.length ? eligible.length / annual.length * 100 : null,
+            value: eligible.length ? sum / eligible.length : null, window_incomplete: year + 3 >= snapshotYear,
+            small_base: eligible.length > 0 && eligible.length < JOURNAL_METRIC_POLICY.small_base,
+            status: !eligible.length ? 'unavailable' : year + 3 >= snapshotYear ? 'provisional' : 'complete' };
+    });
+    return series;
 }
 export function buildJournalMetrics(works, entities, manifest) {
-    const snapshotYear = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Jakarta', year: 'numeric' }).format(new Date(manifest.updated_at)));
+    const snapshotYear = snapshotYearOf(manifest);
     const years = Array.from({ length: 7 }, (_, i) => snapshotYear - 6 + i);
     const journals = Object.entries(entities.sources).filter(([, s]) => s.unand_publisher && s.type === 'journal')
-        .map(([id, source]) => ({ id, name: source.name || id, issn: source.issn || [], works: [], series: { four_year: [], two_year: [], fwci: [] } }));
+        .map(([id, source]) => ({ id, name: source.name || id, issn: source.issn || [], works: [] }));
     const byID = new Map(journals.map(j => [j.id, j])), seen = new Set();
     for (const work of works) {
         if (!work.id || seen.has(work.id)) throw new Error('Invalid or duplicate work ID in journal metrics.');
@@ -75,43 +121,7 @@ export function buildJournalMetrics(works, entities, manifest) {
     }
     for (const journal of journals) {
         journal.excluded_publication_years = journal.works.filter(w => !Number.isInteger(w.year) || w.year < 1500 || w.year > snapshotYear).length;
-        for (const kind of ['four_year', 'two_year']) for (const year of years) {
-            const window = journalWindow(kind, year), groups = new Map();
-            let numerator = 0, denominator = 0, targets = 0, retracted = 0, unknownTypes = 0;
-            for (const work of journal.works) {
-                if (!Number.isInteger(work.year) || work.year < window.publication_from || work.year > window.publication_to) continue;
-                const eligible = (kind === 'four_year' ? JOURNAL_METRIC_POLICY.four_year_types : JOURNAL_METRIC_POLICY.two_year_denominator_types).includes(work.type);
-                const contribution = kind === 'four_year' && !eligible ? 0 : journalContribution(work, kind, year);
-                const target = kind === 'two_year' || eligible;
-                numerator += contribution;
-                denominator += Number(eligible);
-                targets += Number(target);
-                retracted += Number(Boolean(work.retracted));
-                unknownTypes += Number(!knownWorkTypes.has(work.type));
-                const key = `${work.year}|${work.type}`;
-                const group = groups.get(key) || { year: work.year, type: work.type, works: 0, targets: 0, citations: 0, denominator: 0, retracted: 0 };
-                group.works++; group.targets += Number(target); group.citations += contribution;
-                group.denominator += Number(eligible); group.retracted += Number(Boolean(work.retracted));
-                groups.set(key, group);
-            }
-            if (![numerator, denominator].every(Number.isSafeInteger)) throw new Error('Journal metric count exceeds safe integer range.');
-            journal.series[kind].push({ year, ...window, numerator, denominator, target_documents: targets,
-                value: denominator ? numerator / denominator : null, status: denominator ? (year === snapshotYear ? 'provisional' : 'complete') : 'unavailable',
-                small_base: denominator > 0 && denominator < JOURNAL_METRIC_POLICY.small_base,
-                retracted, unknown_types: unknownTypes,
-                breakdown: [...groups.values()].sort((a, b) => a.year - b.year || a.type.localeCompare(b.type)) });
-        }
-        for (const year of years) {
-            const annual = journal.works.filter(w => w.year === year);
-            const eligible = annual.filter(w => validNumber(w.fwci) && w.fwci >= 0);
-            const sum = eligible.reduce((n, w) => n + w.fwci, 0);
-            if (!Number.isFinite(sum)) throw new Error('Invalid journal FWCI aggregate.');
-            journal.series.fwci.push({ year, ...journalWindow('fwci', year), numerator: sum, denominator: eligible.length,
-                total_documents: annual.length, coverage: annual.length ? eligible.length / annual.length * 100 : null,
-                value: eligible.length ? sum / eligible.length : null, window_incomplete: year + 3 >= snapshotYear,
-                small_base: eligible.length > 0 && eligible.length < JOURNAL_METRIC_POLICY.small_base,
-                status: !eligible.length ? 'unavailable' : year + 3 >= snapshotYear ? 'provisional' : 'complete' });
-        }
+        journal.series = citationRatioSeries(journal.works, years, snapshotYear);
         delete journal.works;
     }
     const defaultYear = snapshotYear - 1;
@@ -119,6 +129,25 @@ export function buildJournalMetrics(works, entities, manifest) {
     return { schema_version: 1, updated_at: manifest.updated_at, snapshot_year: snapshotYear, years,
         citation_history_from: snapshotYear - 9, citation_history_to: snapshotYear, policy: JOURNAL_METRIC_POLICY,
         defaults: { source: journals[0]?.id || '', year: defaultYear }, journals };
+}
+// Recap across all mapped journals: an unweighted mean of journal values plus a pooled ratio of summed parts.
+export function journalRecap(dataset, year) {
+    const result = { year, journals: dataset.journals.length };
+    for (const kind of ['four_year', 'two_year', 'fwci']) {
+        const rows = dataset.journals.map(j => j.series[kind]?.find(r => r.year === year)).filter(Boolean);
+        const values = rows.map(r => r.value).filter(validNumber).sort((a, b) => a - b);
+        const numerator = rows.reduce((n, r) => n + r.numerator, 0), denominator = rows.reduce((n, r) => n + r.denominator, 0);
+        const middle = Math.floor(values.length / 2);
+        result[kind] = { mean: values.length ? values.reduce((n, v) => n + v, 0) / values.length : null,
+            median: values.length ? values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2 : null,
+            journals_with_value: values.length, numerator, denominator, pooled: denominator ? numerator / denominator : null,
+            status: !values.length ? 'unavailable' : rows.some(r => r.status === 'provisional') ? 'provisional' : 'complete' };
+        if (kind === 'fwci') {
+            const total = rows.reduce((n, r) => n + r.total_documents, 0);
+            Object.assign(result[kind], { total_documents: total, coverage: total ? denominator / total * 100 : null });
+        }
+    }
+    return result;
 }
 export const percentage = (a, b) => b ? a / b * 100 : null;
 export function csvCell(value) {
@@ -156,10 +185,10 @@ export function auditFlags(work, year) {
     };
 }
 export function matches(work, filter, entities, year = new Date().getFullYear()) {
-    if (filter.journalMetric) {
-        if (!journalMetricMember(work, entities, filter, year)) return false;
-        // Journal drills have a fixed full-journal scope; only text search narrows their document list.
-        filter = { scope: 'published', corpus: 'all', q: filter.q };
+    if (filter.metricKind) {
+        if (!citationMetricMember(work, entities, filter, year)) return false;
+        // Journal drills have a fixed full-journal scope; other drills keep the active filter except its period.
+        filter = filter.journal ? { scope: 'published', corpus: 'all', q: filter.q } : withoutPeriod(filter);
     }
     const scopes = work.scopes || [];
     if (!scopes.includes(filter.scope || 'affiliated'))
@@ -230,6 +259,10 @@ export function matches(work, filter, entities, year = new Date().getFullYear())
             return false;
     }
     return true;
+}
+export function withoutPeriod(filter) {
+    const { from, to, metricKind, metricPart, metricYear, journal, ...rest } = filter;
+    return rest;
 }
 export function filteredWorks(works, filter, entities, year) {
     return works.filter(work => matches(work, filter, entities, year));
@@ -321,8 +354,23 @@ export function entityPage(works, entities, filter, manifest, options = {}) {
         throw new Error('Jenis tabel tidak dikenali.');
     return summarize(works, entities, filter, manifest, [], options);
 }
-export function summarize(works, entities, filter, manifest, history = [], tableOptions = null) {
-    const currentYear = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Jakarta', year: 'numeric' }).format(new Date(manifest.updated_at)));
+// Institution-level citation indicators for the active filter; the metric year, not the period, sets each window.
+export function institutionCitationMetrics(works, entities, filter, currentYear) {
+    const base = filteredWorks(works, withoutPeriod(filter), entities, currentYear);
+    const years = Array.from({ length: 7 }, (_, i) => currentYear - 6 + i);
+    const series = citationRatioSeries(base, years, currentYear, { breakdown: false, fwci: false });
+    // FWCI follows the same date checks and minimum base as the FWCI timeline, so both show one number per year.
+    const fwciRows = normalizedAnnualFWCI(base, [], {}, currentYear).rows;
+    series.fwci = years.map(year => {
+        const row = fwciRows.find(r => r.year === year);
+        return { year, value: row?.fwci ?? null, observed: row?.observed_fwci ?? null, denominator: row?.fwci_n || 0,
+            total_documents: row?.count || 0, coverage: row?.coverage ?? null, status: row?.status || 'no_metric',
+            window_incomplete: year + 3 >= currentYear };
+    });
+    return { years, snapshot_year: currentYear, default_year: currentYear - 1, ...series };
+}
+export function summarize(works, entities, filter, manifest, history = [], tableOptions = null, { ratios = true } = {}) {
+    const currentYear = snapshotYearOf(manifest);
     const selected = filteredWorks(works, filter, entities, currentYear);
     const fields = new Map();
     for (const t of Object.values(entities.topics))
@@ -485,7 +533,7 @@ export function summarize(works, entities, filter, manifest, history = [], table
     const publicationRows = [...selected].sort((a, b) => b.citations - a.citations || String(b.date).localeCompare(String(a.date))).slice(0, 50).map(w => ({
         id: w.id, title: w.title, doi: w.doi, year: w.year, citations: w.citations, oa_status: w.oa_status,
         source_name: name('sources', w.source), scope: w.scopes, retracted: w.retracted,
-        journal_citations: filter.journalMetric ? journalContribution(w, filter.journalMetric, Number(filter.journalYear)) : undefined,
+        journal_citations: filter.metricKind ? journalContribution(w, filter.metricKind, Number(filter.metricYear)) : undefined,
     }));
     const histogram = BINS.map(([min, max, label], index) => ({ id: String(index), name: label, count: selected.filter(w => w.citations >= min && w.citations <= max).length }));
     const networks = makeNetworks(selected, entities, top.partners, top.funders);
@@ -518,6 +566,10 @@ export function summarize(works, entities, filter, manifest, history = [], table
         facets: { fields: [...fields].map(([id, name]) => ({ id, name })), topics: allTopics,
             types: sorted('types').map(({ id, name }) => ({ id, name })) },
         history: history.slice(-12), current_year: currentYear,
+        citation_ratios: ratios ? institutionCitationMetrics(works, entities, filter, currentYear) : null,
+        // A citation-ratio drill reports the numerator/denominator of the same filter it lists.
+        metric_row: filter.metricKind && !filter.journal && filter.metricKind !== 'fwci'
+            ? citationRatioSeries(filteredWorks(works, withoutPeriod(filter), entities, currentYear), [Number(filter.metricYear)], currentYear, { breakdown: false, fwci: false })[filter.metricKind][0] : null,
         audit_candidates: works.filter(w => w.scopes.includes('audit') && !w.scopes.includes('affiliated') &&
             (!filter.from || w.year >= Number(filter.from)) && (!filter.to || w.year <= Number(filter.to)) &&
             (filter.corpus !== 'core' || !w.xpac)).slice(0, 50).map(w => ({ id: w.id, title: w.title, year: w.year, doi: w.doi })),
@@ -576,5 +628,5 @@ export function publicationPage(works, entities, filter, options = {}) {
     selected.sort((a, b) => sort === 'year' ? (b.year || 0) - (a.year || 0) : sort === 'title' ? a.title.localeCompare(b.title) : b.citations - a.citations);
     const start = Math.max(0, Number(options.page || 0)) * 50;
     return { total: selected.length, rows: selected.slice(start, start + 50).map(w => ({ ...w, source_name: entities.sources[w.source]?.name || 'Tidak diketahui',
-        journal_citations: filter.journalMetric ? journalContribution(w, filter.journalMetric, Number(filter.journalYear)) : undefined })) };
+        journal_citations: filter.metricKind ? journalContribution(w, filter.metricKind, Number(filter.metricYear)) : undefined })) };
 }

@@ -1,5 +1,5 @@
-import { MODULES, SDGS, csvCell, journalMetricDrill, journalWindow } from './metrics.js';
-import { renderJournalPanel, JOURNAL_TITLES } from './journal-panel.js';
+import { MODULES, SDGS, METRIC_KINDS, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod } from './metrics.js';
+import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderJournalMetrics, METRIC_TITLES, metricYear } from './journal-panel.js';
 import { EXPORT_CONTROLS, SHOW_AUDIT_TAB, CONTENT_PROTECTION } from './config.js';
 import { el, panel, bar, line, donut, stacked, scatter, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE } from './charts.js';
 const $ = id => document.getElementById(id), nf = new Intl.NumberFormat('id-ID'), df = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
@@ -38,11 +38,21 @@ function setHash(module, next = filter) { const p = new URLSearchParams(); for (
         p.set(k, v); const hash = module + (p.size ? '?' + p : '');
     if (location.hash.slice(1) !== hash) $('content').setAttribute('aria-busy', 'true');
     location.hash = hash; }
-function drill(patch) { setHash('publications', { ...filter, ...patch }); }
+const journalPage = () => currentModule === 'journals' && Boolean(filter.journal);
+const currentJournal = () => journalPage() ? journalDataset?.journals.find(j => j.id === filter.journal) : null;
+// Drills stay inside a journal page; on the journals overview a Unand journal opens its own page.
+function drill(patch) {
+    if (journalPage()) return setHash('journals', { ...filter, ...patch });
+    if (currentModule === 'journals' && patch.source && journalDataset?.journals.some(j => j.id === patch.source)) {
+        const { source, ...rest } = patch;
+        return setHash('journals', { journal: source, ...rest });
+    }
+    setHash('publications', { ...filter, ...patch });
+}
 function readRoute() {
     const [route, query = ''] = location.hash.slice(1).split('?');
     currentModule = MODULES.some(([id]) => id === route) && (route !== 'audit' || SHOW_AUDIT_TAB) ? route : 'overview';
-    const allowed = new Set(['from', 'to', 'scope', 'corpus', 'type', 'language', 'license', 'version', 'locationType', 'local', 'field', 'topic', 'oa', 'author', 'partner', 'country', 'funder', 'award', 'source', 'sdg', 'design', 'bin', 'audit', 'metric', 'dateQuality', 'fwciQuality', 'q', 'journalSource', 'journalYear', 'journalMetric', 'journalPart']);
+    const allowed = new Set(['from', 'to', 'scope', 'corpus', 'type', 'language', 'license', 'version', 'locationType', 'local', 'field', 'topic', 'oa', 'author', 'partner', 'country', 'funder', 'award', 'source', 'sdg', 'design', 'bin', 'audit', 'metric', 'dateQuality', 'fwciQuality', 'q', 'journal', 'metricYear', 'metricKind', 'metricPart']);
     filter = { ...manifest.default_filter, scope: defaultScope(currentModule) };
     for (const [k, v] of new URLSearchParams(query))
         if (allowed.has(k))
@@ -53,6 +63,10 @@ function readRoute() {
         filter.corpus = 'core';
     if (!filter.to || Number(filter.to) > Number(manifest.default_filter.to))
         filter.to = manifest.default_filter.to;
+    // A journal page has one fixed population: works published by that journal, full corpus.
+    if (currentModule === 'journals' && filter.journal) Object.assign(filter, { scope: 'published', corpus: 'all', source: filter.journal });
+    else delete filter.journal;
+    if (currentModule !== 'publications' && !journalPage()) { delete filter.metricKind; delete filter.metricPart; }
 }
 function task(action, options = {}) {
     if (!worker) {
@@ -64,13 +78,13 @@ function task(action, options = {}) {
     }
     return new Promise((resolve, reject) => { const id = ++requestID; pending.set(id, { resolve, reject }); worker.postMessage({ id, action, filter: { ...filter }, options, manifest, history }); });
 }
-function isDefault() { const baseline = { ...manifest.default_filter, scope: filter.scope }; return Object.entries(filter).filter(([k]) => !['journalSource', 'journalYear'].includes(k)).every(([k, v]) => !v || String(v) === String(baseline[k] ?? '')) && ['from', 'to', 'scope', 'corpus'].every(k => String(filter[k]) === String(baseline[k])); }
+function isDefault() { const baseline = { ...manifest.default_filter, scope: filter.scope }; return Object.entries(filter).filter(([k]) => k !== 'metricYear').every(([k, v]) => !v || String(v) === String(baseline[k] ?? '')) && ['from', 'to', 'scope', 'corpus'].every(k => String(filter[k]) === String(baseline[k])); }
 async function getSummary() { if (isDefault()) {
     const scope = filter.scope;
     if (!overviewCache.has(scope))
         overviewCache.set(scope, await getJSON(manifest.files.overviews[scope].path));
     return overviewCache.get(scope);
-} return task('summary'); }
+} return task('summary', { ratios: currentModule === 'citations' }); }
 function option(select, value, label) { select.append(el('option', { value }, label)); }
 async function getJournalDataset() {
     if (!manifest.files.journal_metrics) return null;
@@ -81,7 +95,7 @@ async function getJournalDataset() {
     }).catch(error => { journalDatasetPromise = undefined; throw error; });
     return journalDatasetPromise;
 }
-function selectJournal(source, year) { setHash('journals', { ...filter, journalSource: source, journalYear: year }); }
+function openJournal(journal, year) { setHash('journals', { journal, metricYear: year }); }
 function periodLabel() {
     if (!filter.from && !filter.to) return 'Semua tahun';
     if (!filter.from) return `Sampai ${filter.to}`;
@@ -89,7 +103,7 @@ function periodLabel() {
     return `${filter.from}–${filter.to}`;
 }
 function syncFilters() {
-    const lastYear = Math.max(Number(manifest.default_filter.to), filter.journalMetric ? Number(filter.to) : 0);
+    const lastYear = Math.max(Number(manifest.default_filter.to), filter.metricKind ? Number(filter.to) : 0);
     const availableYears = [...manifest.dataset_years, lastYear, filter.from, filter.to]
         .map(Number).filter(year => Number.isInteger(year) && year >= 1500 && year <= lastYear);
     const firstYear = Math.min(...availableYears);
@@ -113,8 +127,9 @@ function syncFilters() {
     }
     $('active-filters').replaceChildren();
     const labels = { topic: 'Topik', author: 'Penulis', partner: 'Mitra', country: 'Negara', funder: 'Pendana', award: 'Hibah', source: 'Sumber', sdg: 'SDG', design: 'Desain studi', language: 'Bahasa', license: 'Lisensi', version: 'Versi', locationType: 'Lokasi', local: 'Afiliasi Unand', bin: 'Rentang sitasi', audit: 'Audit', metric: 'Indikator', dateQuality: 'Tanggal layak timeline', fwciQuality: 'Kelayakan FWCI', q: 'Pencarian' };
+    $('filter-scope').disabled = $('filter-corpus').disabled = journalPage();
     for (const [key, label] of Object.entries(labels))
-        if (filter[key] !== undefined && filter[key] !== '') {
+        if (filter[key] !== undefined && filter[key] !== '' && !(key === 'source' && journalPage())) {
             const chip = el('span', { class: 'chip' }, `${label}: ${filter[key]}`), button = el('button', { type: 'button', 'aria-label': `Hapus filter ${label}` }, '×');
             button.onclick = () => { const next = { ...filter }; delete next[key]; setHash(currentModule, next); };
             chip.append(button);
@@ -196,7 +211,7 @@ function pubTable(container, rows = data.publications, total = data.total, { can
         section.append(toolbar);
     }
     const tableWrap = el('div', { class: 'table-scroll' }), table = el('table'), thead = el('thead'), tr = el('tr');
-    const columns = [['Publikasi', ''], ['Tahun', 'num'], ...(filter.journalMetric ? [[filter.journalMetric === 'fwci' ? 'FWCI karya' : 'Sitasi dalam jendela', 'num']] : []), ['Sitasi kumulatif', 'num'], ['Akses', '']];
+    const columns = [['Publikasi', ''], ['Tahun', 'num'], ...(filter.metricKind ? [[filter.metricKind === 'fwci' ? 'FWCI karya' : 'Sitasi dalam jendela', 'num']] : []), ['Sitasi kumulatif', 'num'], ['Akses', '']];
     for (const [text, cls] of columns)
         tr.append(el('th', { scope: 'col', class: cls }, text));
     thead.append(tr);
@@ -218,7 +233,7 @@ function pubTable(container, rows = data.publications, total = data.total, { can
             const access = el('td');
             access.append(el('span', { class: `oa-tag ${row.oa_status === 'closed' ? 'closed' : ''}` }, row.oa_status || 'Kandidat audit'));
             tr.append(title, el('td', { class: 'num' }, row.year || '—'));
-            if (filter.journalMetric) tr.append(el('td', { class: 'num journal-contribution' }, filter.journalMetric === 'fwci' ? decimal(row.journal_citations) : num(row.journal_citations)));
+            if (filter.metricKind) tr.append(el('td', { class: 'num journal-contribution' }, filter.metricKind === 'fwci' ? decimal(row.journal_citations) : num(row.journal_citations)));
             tr.append(el('td', { class: 'num' }, row.citations === undefined ? '—' : num(row.citations)), access);
             tbody.append(tr);
         }
@@ -356,6 +371,23 @@ function topicSelector(form, rows) {
     topicLabelNode.append(topic);
     form.append(groupLabelNode, subfieldLabelNode, topicLabelNode, el('small', { id: 'topic-help', class: 'topic-help' }, 'Pilih bidang, subbidang, lalu topik. Filter diterapkan setelah topik dipilih.'));
 }
+// Context above a drill list: which metric, year and population the listed works form.
+function metricContext(content, journal) {
+    const kind = filter.metricKind, year = Number(filter.metricYear);
+    const row = journal ? journal.series[kind].find(r => r.year === year) : data.metric_row;
+    const context = el('section', { class: 'panel journal-drill-context' });
+    const owner = journal ? journal.name : scopeName[filter.scope];
+    context.append(el('h2', {}, `${journal && kind === 'fwci' ? 'FWCI jurnal' : METRIC_TITLES[kind]} · ${year} · ${owner}`));
+    if (row) context.append(el('p', {}, kind === 'fwci'
+        ? `${num(row.denominator)} karya dengan FWCI valid dari ${num(row.total_documents)} karya terbitan ${row.year}. Jumlah skor FWCI ${decimal(row.numerator)} ÷ ${num(row.denominator)} karya bermetrik = ${decimal(row.value)}.`
+        : `${filter.metricPart === 'numerator' ? 'Dokumen sasaran pembilang, termasuk dokumen dengan nol sitasi' : 'Dokumen penyebut'}. ${num(row.numerator)} sitasi ÷ ${num(row.denominator)} dokumen. Periode publikasi ${row.publication_from}–${row.publication_to}; sitasi ${row.citation_from}–${row.citation_to}.`));
+    context.append(el('p', {}, `Kolom ${kind === 'fwci' ? 'FWCI karya menampilkan skor pembentuk rerata' : 'Sitasi dalam jendela menunjukkan kontribusi setiap karya'}. Sitasi kumulatif dan kartu indikator umum memakai seluruh sitasi per snapshot. ${journal ? 'Daftar hanya memuat karya jurnal ini. ' : 'Daftar mengikuti cakupan dan filter yang sama dengan indikator. '}Pencarian hanya mempersempit daftar dokumen; tidak menghitung ulang nilai. Menerapkan Jelajahi data mengakhiri rincian metrik ini.`));
+    if (kind === 'fwci') fwciHelp(context);
+    const back = el('button', { class: 'button secondary', type: 'button' }, journal ? 'Kembali ke halaman jurnal' : 'Kembali ke Dampak sitasi');
+    back.onclick = () => journal ? openJournal(journal.id, year)
+        : setHash('citations', { ...withoutPeriod(filter), from: manifest.default_filter.from, to: manifest.default_filter.to, metricYear: year });
+    context.append(back); content.append(context);
+}
 function render() {
     destroyCharts();
     const content = $('content');
@@ -367,30 +399,37 @@ function render() {
     document.title = title + ' · Universitas Andalas';
     document.querySelectorAll('.nav-link').forEach(a => { const active = a.dataset.module === currentModule; a.classList.toggle('active', active); active ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
     syncFilters();
+    const journal = currentJournal();
+    if (journal) {
+        document.title = `${journal.name} · Jurnal Unand · Universitas Andalas`;
+        renderJournalHeader(content, journalDataset, journal, () => setHash('journals', { metricYear: filter.metricYear }));
+    }
     const scope = el('div', { class: 'scope-line' });
-    scope.append(el('span', {}, `${scopeName[filter.scope]} · ${periodLabel()} · ${filter.corpus === 'core' ? 'Korpus utama' : 'Termasuk korpus perluasan'}`), el('strong', {}, `${num(data.total)} karya unik`));
+    scope.append(el('span', {}, `${journal ? journal.name : scopeName[filter.scope]} · ${periodLabel()} · ${filter.corpus === 'core' ? 'Korpus utama' : 'Termasuk korpus perluasan'}`), el('strong', {}, `${num(data.total)} karya unik`));
     content.append(scope);
     if ((!filter.from || Number(filter.from) <= data.current_year) && (!filter.to || Number(filter.to) >= data.current_year))
         intro(content, `Tahun ${data.current_year} belum lengkap. Perbandingan tahun berjalan tidak disamakan dengan satu tahun kalender penuh.`);
-    if (filter.scope !== 'affiliated')
+    if (filter.scope !== 'affiliated' && !journal)
         intro(content, filter.scope === 'funded' ? 'Cakupan ini berisi karya yang mencantumkan Unand sebagai pendana. Afiliasi penulis dapat berasal dari institusi lain.' : 'Cakupan ini berisi karya terbitan sumber di bawah penerbit Unand, termasuk artikel penulis dari luar Unand.');
     kpis(content);
-    if (currentModule === 'journals') renderJournalPanel(content, journalDataset, filter, selectJournal, next => setHash('publications', next));
-    if (currentModule === 'publications' && filter.journalMetric) {
-        const journal = journalDataset.journals.find(j => j.id === filter.journalSource);
-        const row = journal.series[filter.journalMetric].find(r => r.year === Number(filter.journalYear));
-        const context = el('section', { class: 'panel journal-drill-context' });
-        context.append(el('h2', {}, `${JOURNAL_TITLES[filter.journalMetric]} · ${row.year} · ${journal.name}`),
-            el('p', {}, filter.journalMetric === 'fwci'
-                ? `${num(row.denominator)} karya dengan FWCI valid dari ${num(row.total_documents)} karya terbitan ${row.year}. Jumlah skor FWCI ${decimal(row.numerator)} ÷ ${num(row.denominator)} karya bermetrik = ${decimal(row.value)}.`
-                : `${filter.journalPart === 'numerator' ? 'Dokumen sasaran pembilang, termasuk dokumen dengan nol sitasi' : 'Dokumen penyebut'}. ${num(row.numerator)} sitasi ÷ ${num(row.denominator)} dokumen. Periode publikasi ${row.publication_from}–${row.publication_to}; sitasi ${row.citation_from}–${row.citation_to}.`),
-            el('p', {}, `Kolom ${filter.journalMetric === 'fwci' ? 'FWCI karya menampilkan skor pembentuk rerata' : 'Sitasi dalam jendela menunjukkan kontribusi setiap karya'}. Sitasi kumulatif dan kartu indikator umum memakai seluruh sitasi per snapshot. Pencarian hanya mempersempit daftar dokumen; tidak menghitung ulang nilai jurnal. Menerapkan Jelajahi data mengakhiri rincian metrik ini.`));
-        if (filter.journalMetric === 'fwci') fwciHelp(context);
-        const back = el('button', { class: 'button secondary', type: 'button' }, 'Kembali ke metrik jurnal');
-        back.onclick = () => setHash('journals', { ...manifest.default_filter, scope: 'published', journalSource: journal.id, journalYear: row.year });
-        context.append(back); content.append(context);
+    if (currentModule === 'journals' && !journal)
+        renderJournalRecap(content, journalDataset, filter, year => setHash('journals', { ...filter, metricYear: year }), openJournal);
+    if (journal && !filter.metricKind)
+        renderJournalMetrics(content, journalDataset, journal, filter, { onYear: year => setHash('journals', { ...filter, metricYear: year }),
+            onDrill: (kind, part, year) => setHash('journals', { ...metricDrill(year, kind, part, journal.id) }) });
+    if (currentModule === 'citations') {
+        const ratios = data.citation_ratios, year = metricYear(ratios.years, ratios.default_year, filter);
+        renderImpactMetrics(content, ratios, { title: 'Indikator dampak sitasi', fwciTitle: 'FWCI', years: ratios.years, snapshotYear: ratios.snapshot_year, year,
+            populationLabel: scopeName[filter.scope].charAt(0).toLowerCase() + scopeName[filter.scope].slice(1),
+            populationText: `Populasi mengikuti cakupan aktif (${scopeName[filter.scope]}) dan filter Jelajahi data selain periode; periode publikasi ditentukan oleh jendela tahun metrik.`,
+            note: `Rasio sitasi 4 tahun (pola CiteScore), rasio sitasi 2 tahun (pola JIF), dan FWCI untuk ${scopeName[filter.scope]} pada tahun metrik terpilih. Filter Jelajahi data berlaku, kecuali periode: jendela publikasi mengikuti tahun metrik. FWCI memakai pemeriksaan tanggal dan basis minimum yang sama dengan Timeline FWCI.`,
+            footer: `${scopeName[filter.scope]} · ${filter.corpus === 'core' ? 'Korpus utama' : 'Termasuk korpus perluasan'} · Snapshot ${manifest.updated_at}`,
+            onYear: next => setHash('citations', { ...filter, metricYear: next }),
+            onDrill: (kind, part, metric) => kind === 'fwci' ? drill({ from: metric, to: metric, metric: 'fwci', fwciQuality: 'valid' })
+                : setHash('publications', { ...withoutPeriod(filter), ...metricDrill(metric, kind, part) }) });
     }
-    selectors(content);
+    if (filter.metricKind) metricContext(content, journal);
+    if (!journal) selectors(content);
     const grid = el('div', { class: 'charts-grid' });
     content.append(grid);
     const k = data.kpis;
@@ -490,7 +529,17 @@ function render() {
         intro(content, `Rerata APC daftar yang diketahui: ${k.apc_mean === null ? 'Tidak tersedia' : 'US$ ' + decimal(k.apc_mean)}. ${num(k.paid_fallback)} rekaman estimasi pembayaran memakai provenance selain OpenAPC. Tidak dijumlahkan sebagai realisasi belanja Unand.`);
         entityTable(content, 'funders');
     }
-    else if (currentModule === 'journals') {
+    else if (journal && !filter.metricKind) {
+        // Every chart below uses the journal-only summary; clicks narrow this journal page.
+        line(panel(grid, 'Perjalanan publikasi jurnal', 'Jumlah karya jurnal menurut tahun publikasi. Klik tahun untuk mempersempit halaman ini.'), data.top.years, { onClick: drillYear });
+        stacked(panel(grid, 'Jenis karya menurut tahun', 'Karya unik jurnal ini; jenis minor dapat berada di luar enam seri teratas.'), groupedYears('types'), data.top.types.slice(0, 6), { onClick: (y, s) => drill({ from: y.year, to: y.year, type: s.id }) });
+        groupBar(grid, 'Negara afiliasi kontributor', 'countries', 'country', 'Negara afiliasi penulis pada karya jurnal ini; satu karya dapat masuk beberapa negara.');
+        stacked(panel(grid, 'Komposisi akses per tahun', 'Proporsi status OA karya jurnal ini per tahun.'), data.oa_years.map(y => ({ ...y, values: y.oa })), data.top.oa, { percentage: true, onClick: (y, s) => drill({ from: y.year, to: y.year, oa: s.id }) });
+        const own = data.top.journals.find(r => r.id === journal.id) || { count: 0, local: 0 };
+        donut(panel(grid, 'Asal afiliasi penulis', 'Karya jurnal ini dengan sedikitnya satu authorship Unand dibanding tanpa afiliasi Unand.'),
+            data.total ? [{ id: 'yes', name: 'Ada afiliasi Unand', count: own.local }, { id: 'no', name: 'Tanpa afiliasi Unand', count: own.count - own.local }] : [], r => drill({ local: r.id }));
+    }
+    else if (currentModule === 'journals' && !journal) {
         groupBar(grid, 'Sumber menurut keluaran', 'sources', 'source', 'Daftar sumber terpetakan; bukan daftar resmi seluruh jurnal aktif.');
         scatter(panel(grid, 'Volume dan sitasi sumber'), data.top.sources, { bubble: true, onClick: r => drill({ source: r.id }) });
         groupBar(grid, 'Negara afiliasi kontributor', 'countries', 'country', 'Karya terbitan Unand dapat ditulis peneliti di luar Unand.');
@@ -521,7 +570,7 @@ function render() {
     }
     if (!data.total)
         intro(content, 'Tidak ada karya pada kombinasi filter ini. Ubah periode atau hapus filter tambahan untuk memperluas penelusuran.');
-    if (currentModule === 'publications') pubTable(content);
+    if (currentModule === 'publications' || journal) pubTable(content);
 }
 function timelineTrack(p, label) {
     const controls = el('div', { class: 'timeline-controls' });
@@ -854,20 +903,22 @@ async function route() {
     if (!isDefault())
         note('Mengolah snapshot untuk filter terpilih. Rincian dimuat hanya saat diperlukan.');
     try {
-        if (currentModule === 'journals' || currentModule === 'publications' && filter.journalMetric) {
+        if (currentModule === 'journals') {
             journalDataset = await getJournalDataset();
             if (thisRender !== renderID) return;
+            if (filter.journal && !journalDataset?.journals.some(j => j.id === filter.journal))
+                throw new Error('Jurnal tidak ditemukan pada snapshot ini. Kembali ke tab Jurnal Unand.');
         }
-        if (currentModule === 'publications' && filter.journalMetric) {
-            if (!journalDataset || !['four_year', 'two_year', 'fwci'].includes(filter.journalMetric) ||
-                !['numerator', 'denominator'].includes(filter.journalPart) ||
-                !journalDataset.journals.some(j => j.id === filter.journalSource) || !journalDataset.years.includes(Number(filter.journalYear)))
-                throw new Error('Konteks metrik jurnal tidak valid. Kembali ke tab Jurnal Unand.');
-            const window = journalWindow(filter.journalMetric, Number(filter.journalYear));
-            filter = { ...journalMetricDrill(filter.journalSource, Number(filter.journalYear), filter.journalMetric, filter.journalPart),
-                from: window.publication_from, to: window.publication_to, q: filter.q || '' };
-        } else {
-            delete filter.journalMetric; delete filter.journalPart;
+        if (filter.metricKind) {
+            const year = Number(filter.metricYear), snapshotYear = snapshotYearOf(manifest);
+            if (!METRIC_KINDS.includes(filter.metricKind) || !['numerator', 'denominator'].includes(filter.metricPart) ||
+                !Number.isInteger(year) || year < snapshotYear - 6 || year > snapshotYear || filter.metricKind === 'fwci' && !filter.journal)
+                throw new Error('Konteks metrik tidak valid. Kembali ke tab asal metrik.');
+            const window = journalWindow(filter.metricKind, year);
+            // A journal drill keeps only the journal and search; a citation drill keeps the active filter.
+            filter = filter.journal
+                ? { journal: filter.journal, scope: 'published', corpus: 'all', source: filter.journal, ...metricDrill(year, filter.metricKind, filter.metricPart, filter.journal), from: window.publication_from, to: window.publication_to, q: filter.q || '' }
+                : { ...filter, from: window.publication_from, to: window.publication_to };
         }
         const result = await getSummary();
         if (thisRender !== renderID)
@@ -928,17 +979,17 @@ async function init() {
     document.querySelector('.skip-link').onclick = event => {event.preventDefault();$('main').focus();$('main').scrollIntoView();};
     MODULES.forEach(([id, label, number], i) => { if (id === 'audit' && !SHOW_AUDIT_TAB) return; const a = el('a', { href: '#' + id, class: 'nav-link', 'data-module': id }); a.append(el('span', { class: 'nav-number', 'aria-hidden': 'true' }, icons[i]), el('span', {}, label)); a.onclick = e => { e.preventDefault(); if (!manifest)
         return; document.querySelector('.sidebar').classList.remove('open'); $('menu-toggle').setAttribute('aria-expanded', 'false'); const next = { ...manifest.default_filter, scope: defaultScope(id) }; for (const k of ['from', 'to', 'type', 'field', 'corpus', 'oa'])
-        if (filter[k])
+        if (filter[k] && !(k === 'corpus' && filter.journal))
             next[k] = filter[k]; setHash(id, next); }; $('navigation').append(a); });
     $('filters-form').onsubmit = e => { e.preventDefault(); if (!manifest)
-        return; const next = { ...filter }; delete next.journalMetric; delete next.journalPart; for (const [k, v] of new FormData(e.currentTarget))
+        return; const next = { ...filter }; delete next.metricKind; delete next.metricPart; for (const [k, v] of new FormData(e.currentTarget))
         next[k] = v; setHash(currentModule, next); };
     $('reset').onclick = () => {
         topicGroup = '';
         topicSubfield = '';
         if (!manifest) return;
         const previousHash = location.hash;
-        setHash(currentModule, { ...manifest.default_filter, scope: defaultScope(currentModule) });
+        setHash(currentModule, journalPage() ? { journal: filter.journal } : { ...manifest.default_filter, scope: defaultScope(currentModule) });
         if (location.hash === previousHash) route();
     };
     $('menu-toggle').onclick = () => { const active = document.querySelector('.sidebar').classList.toggle('open'); $('menu-toggle').setAttribute('aria-expanded', String(active)); };

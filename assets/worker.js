@@ -1,4 +1,4 @@
-import { summarize, publicationPage, entityPage, filteredWorks, journalWindow } from './metrics.js';
+import { summarize, publicationPage, entityPage, filteredWorks, journalWindow, snapshotYearOf } from './metrics.js';
 let works = [], entities = {}, manifest, history = [], loadedKey = '';
 async function getJSON(url) {
     const response = await fetch(url);
@@ -15,13 +15,14 @@ async function handle({ data }) {
             entities = await getJSON(new URL('../data/entities.json', import.meta.url));
         }
         // Read years that are actually needed. Additional scopes share deduplicated records.
-        const metricYear = Number(filter.journalYear);
-        const metricWindow = filter.journalMetric ? journalWindow(filter.journalMetric, metricYear) : null;
-        const snapshotYear = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Jakarta', year: 'numeric' }).format(new Date(manifest.updated_at)));
-        const files = manifest.files.works.filter(f => filter.journalMetric
+        const snapshotYear = snapshotYearOf(manifest);
+        const metricWindow = filter.metricKind ? journalWindow(filter.metricKind, Number(filter.metricYear)) : null;
+        // Citation ratios ignore the period, so their ten-year citation history is loaded alongside it.
+        const ratios = !filter.metricKind && (Boolean(options?.ratios) || !filter.from && !filter.to);
+        const inPeriod = f => !filter.from && !filter.to || Number(f.year) >= Number(filter.from || 0) && Number(f.year) <= Number(filter.to || 9999);
+        const files = manifest.files.works.filter(f => metricWindow
             ? Number(f.year) >= metricWindow.publication_from && Number(f.year) <= metricWindow.publication_to
-            : !filter.from && !filter.to ||
-            Number(f.year) >= Number(filter.from || 0) && Number(f.year) <= Number(filter.to || 9999));
+            : inPeriod(f) || ratios && Number(f.year) >= snapshotYear - 9 && Number(f.year) <= snapshotYear);
         const key = files.map(f => f.path).join('|');
         if (key !== loadedKey) {
             const rows = [];
@@ -34,7 +35,7 @@ async function handle({ data }) {
         }
         let result;
         if (action === 'summary')
-            result = summarize(works, entities, filter, manifest, history);
+            result = summarize(works, entities, filter, manifest, history, null, { ratios });
         else if (action === 'page')
             result = publicationPage(works, entities, filter, { ...options, snapshotYear });
         else if (action === 'entities')
