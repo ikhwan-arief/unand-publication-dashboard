@@ -1,5 +1,5 @@
 import { MODULES, SDGS, METRIC_KINDS, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod } from './metrics.js';
-import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderJournalMetrics, METRIC_TITLES, metricYear } from './journal-panel.js';
+import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderJournalMetrics, renderJournalCitations, METRIC_TITLES, metricYear } from './journal-panel.js';
 import { EXPORT_CONTROLS, SHOW_AUDIT_TAB, CONTENT_PROTECTION } from './config.js';
 import { el, panel, bar, line, donut, stacked, scatter, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE } from './charts.js';
 const $ = id => document.getElementById(id), nf = new Intl.NumberFormat('id-ID'), df = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
@@ -421,9 +421,13 @@ function render() {
     kpis(content);
     if (currentModule === 'journals' && !journal)
         renderJournalRecap(content, journalDataset, filter, year => setHash('journals', { ...filter, metricYear: year }), openJournal);
-    if (journal && !filter.metricKind)
-        renderJournalMetrics(content, journalDataset, journal, filter, { onYear: year => setHash('journals', { ...filter, metricYear: year }),
+    if (journal && !filter.metricKind) {
+        const onYear = year => setHash('journals', { ...filter, metricYear: year });
+        const metrics = renderJournalMetrics(content, journalDataset, journal, filter, { onYear,
             onDrill: (kind, part, year) => setHash('journals', { ...metricDrill(year, kind, part, journal.id) }) });
+        // Sitasi per tahun sits beside Timeline FWCI jurnal in the metric timelines grid.
+        renderJournalCitations(metrics.querySelector('.journal-timelines'), journalDataset, journal, filter, onYear);
+    }
     if (currentModule === 'citations') {
         const ratios = data.citation_ratios, year = metricYear(ratios.years, ratios.default_year, filter);
         renderImpactMetrics(content, ratios, { title: 'Indikator dampak sitasi', fwciTitle: 'FWCI', years: ratios.years, snapshotYear: ratios.snapshot_year, year,

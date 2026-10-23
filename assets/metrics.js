@@ -109,6 +109,23 @@ export function citationRatioSeries(works, years, snapshotYear, { breakdown = tr
     });
     return series;
 }
+// Citations a journal receives per citation year, plus three-year totals ending at each metric year:
+// all citations in the window, and citations in the window to works published in the same window.
+export function journalCitationHistory(works, snapshotYear, metricYears) {
+    const from = snapshotYear - 9, byYear = new Map(Array.from({ length: 10 }, (_, i) => [from + i, 0]));
+    for (const work of works) for (const [year, count] of work.citation_years)
+        if (byYear.has(year)) byYear.set(year, byYear.get(year) + count);
+    const by_year = [...byYear].map(([year, citations]) => ({ year, citations, partial: year === snapshotYear }));
+    const three_year = metricYears.map(year => {
+        const start = year - 2, inWindow = ([y]) => y >= start && y <= year;
+        const recent = works.filter(w => Number.isInteger(w.year) && w.year >= start && w.year <= year);
+        const sum = list => list.reduce((n, w) => n + w.citation_years.filter(inWindow).reduce((m, [, c]) => m + c, 0), 0);
+        const total = sum(works), recentTotal = sum(recent);
+        if (![total, recentTotal].every(Number.isSafeInteger)) throw new Error('Journal citation total exceeds safe integer range.');
+        return { year, from: start, to: year, citations: total, recent_citations: recentTotal, recent_documents: recent.length, partial: year === snapshotYear };
+    });
+    return { by_year, three_year };
+}
 export function buildJournalMetrics(works, entities, manifest) {
     const snapshotYear = snapshotYearOf(manifest);
     const years = Array.from({ length: 7 }, (_, i) => snapshotYear - 6 + i);
@@ -124,6 +141,7 @@ export function buildJournalMetrics(works, entities, manifest) {
     for (const journal of journals) {
         journal.excluded_publication_years = journal.works.filter(w => !Number.isInteger(w.year) || w.year < 1500 || w.year > snapshotYear).length;
         journal.series = citationRatioSeries(journal.works, years, snapshotYear);
+        journal.citations = journalCitationHistory(journal.works, snapshotYear, years);
         delete journal.works;
     }
     const defaultYear = snapshotYear - 1;

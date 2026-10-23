@@ -1,4 +1,4 @@
-import { el, panel, line, PALETTE } from './charts.js';
+import { el, panel, line, bar, PALETTE } from './charts.js';
 import { journalRecap } from './metrics.js';
 
 const count = n => new Intl.NumberFormat('id-ID').format(n);
@@ -104,7 +104,7 @@ function fwciCard(container, charts, rows, year, ctx) {
     card.append(help);
     if (row?.denominator) card.append(drillButton('Telusuri karya dengan FWCI valid', 'fwci', 'denominator', year, ctx.onDrill));
     container.append(card);
-    const chart = panel(charts, `Timeline ${title}`, `Rerata skor FWCI karya menurut tahun publikasi · ${ctx.populationLabel}. Klik tahun untuk memperbarui metrik. Nilai kosong membentuk jeda; acuan global tetap 1.`, true);
+    const chart = panel(charts, `Timeline ${title}`, `Rerata skor FWCI karya menurut tahun publikasi · ${ctx.populationLabel}. Klik tahun untuk memperbarui metrik. Nilai kosong membentuk jeda; acuan global tetap 1.`, ctx.fwciWide !== false);
     chart.node.dataset.impactTimeline = 'fwci';
     line(chart, rows, { value: 'value', label: `Rerata ${title}`, color: PALETTE[2], unit: 'FWCI', reference: 1, referenceLabel: 'Acuan global FWCI 1', footer: ctx.footer,
         tooltip: r => `${r.year}: FWCI ${r.status === 'small_sample' ? 'basis metrik kecil' : ratio(r.value)} · ${count(r.denominator)}/${count(r.total_documents)} karya · cakupan ${pct(r.coverage)}${r.window_incomplete ? ' · jendela sitasi belum penuh' : ''}${r.small_base ? ' · basis dokumen kecil' : ''}`,
@@ -225,5 +225,25 @@ export function renderJournalMetrics(container, dataset, journal, filter, { onYe
         populationLabel: 'karya jurnal ini',
         populationText: 'Hanya karya yang dipetakan ke jurnal ini melalui sumber utama; seluruh afiliasi dan korpus yang terkumpul disertakan.',
         note: `Metrik ${journal.name} untuk tahun terpilih. Filter pada halaman jurnal tidak mengubah panel ini. ${count(journal.excluded_publication_years)} dokumen tanpa tahun publikasi layak tidak digunakan.`,
-        footer: `${journal.name} · Seluruh afiliasi dan korpus terkumpul · Snapshot ${dataset.updated_at}` });
+        footer: `${journal.name} · Seluruh afiliasi dan korpus terkumpul · Snapshot ${dataset.updated_at}`,
+        // Half width, so Sitasi per tahun can share its row.
+        fwciWide: false });
+}
+
+// Citations per year for one journal, with three-year totals for the window ending at the selected metric year.
+export function renderJournalCitations(container, dataset, journal, filter, onYear) {
+    const history = journal.citations;
+    if (!history) return;
+    const year = metricYear(dataset.years, dataset.defaults.year, filter), window = history.three_year.find(r => r.year === year);
+    const p = panel(container, 'Sitasi per tahun', `Jumlah sitasi yang diterima seluruh karya ${journal.name} pada setiap tahun sitasi (counts_by_year OpenAlex, ${history.by_year[0].year}–${history.by_year.at(-1).year}). Tahun ${dataset.snapshot_year}* belum lengkap. Klik tahun untuk memilih jendela tiga tahun yang berakhir pada tahun tersebut.`);
+    p.node.dataset.journalCitations = '';
+    p.node.classList.add('journal-citations');
+    const selectable = new Set(dataset.years);
+    bar(p, history.by_year.map(r => ({ id: String(r.year), name: `${r.year}${r.partial ? '*' : ''}`, count: r.citations, year: r.year })),
+        { horizontal: false, limit: history.by_year.length, unit: 'sitasi', color: PALETTE[0], onClick: r => selectable.has(r.year) && onYear(r.year) });
+    if (!window) return;
+    const span = `${window.from}–${window.to}`, totals = el('dl', { class: 'journal-counts journal-citation-totals' });
+    totals.append(el('dt', {}, `Total sitasi ${span}`), el('dd', { 'data-citation-total': 'all' }, count(window.citations)),
+        el('dt', {}, `Total sitasi ${span} kepada karya terbitan ${span}`), el('dd', { 'data-citation-total': 'recent' }, count(window.recent_citations)));
+    p.node.append(totals, el('p', { class: 'panel-note' }, `Jendela tiga tahun berakhir pada tahun metrik ${year}. Angka pertama menjumlahkan sitasi pada ${span} kepada seluruh karya jurnal, berapa pun tahun terbitnya. Angka kedua hanya menghitung sitasi kepada ${count(window.recent_documents)} karya yang terbit pada ${span}, semua jenis dokumen. Sitasi mandiri tercakup.${window.partial ? ` Tahun ${dataset.snapshot_year} belum lengkap; total dapat bertambah.` : ''}`));
 }
