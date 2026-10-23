@@ -15,7 +15,7 @@
 .uam-card{border:1px solid rgba(128,128,128,.3);border-radius:8px;padding:12px 14px;min-width:0;overflow-wrap:anywhere}
 .uam-value{font-size:1.9em;font-weight:700;line-height:1.1;color:var(--uam-accent)}.uam-kpis .uam-value{font-size:1.45em}
 .uam-warn{font-size:.82em;color:#9a5b00}.uam dl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:.6em 0}.uam dd{margin:0;font-weight:700;text-align:right}
-.uam svg{display:block;width:100%;height:auto;overflow:visible}.uam svg text{fill:currentColor;font-size:10px}
+.uam svg{display:block;width:100%;height:auto;overflow:visible}.uam svg text{fill:currentColor;font-size:.72em}
 .uam select{font:inherit;padding:4px 8px;max-width:100%}.uam-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8em;margin-top:6px}
 .uam-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .uam table{width:100%;border-collapse:collapse;font-size:.92em}.uam th,.uam td{padding:6px 8px;border-bottom:1px solid rgba(128,128,128,.25);text-align:left;vertical-align:top}
@@ -26,7 +26,10 @@
     const range = (a, b) => a === b ? String(a) : `${a}–${b}`;
 
     // Charts are plain SVG with native tooltips; tables of numbers sit in a collapsed <details>.
-    const W = 320, H = 150, L = 30, B = 22, T = 8, R = 6;
+    // Charts are drawn at the card's real width (1 unit = 1 px), so labels stay small instead of scaling up.
+    let W = 320;
+    const H = 150, L = 30, B = 22, T = 8, R = 6;
+    const chartWidth = mount => { const w = mount.clientWidth || 640; return Math.max(220, Math.round((w >= 594 ? (w - 14) / 2 : w) - 30)); };
     function frame(label, maxY) {
         const s = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': label });
         for (const f of [0, .5, 1]) {
@@ -89,13 +92,15 @@
     const numbers = (head, rows) => { const d = el('details', {}, el('summary', {}, 'Lihat angka')), t = el('table'), tr = el('tr'); head.forEach((h, i) => tr.append(el('th', { class: i ? 'n' : '' }, h))); t.append(el('thead', {}, tr)); const b = el('tbody'); rows.forEach(r => { const row = el('tr'); r.forEach((v, i) => row.append(el('td', { class: i ? 'n' : '' }, String(v)))); b.append(row); }); t.append(b); d.append(el('div', { class: 'uam-scroll' }, t)); return d; };
     const card = (title, note, ...body) => el('div', { class: 'uam-card' }, el('h4', {}, title), note ? el('p', { class: 'uam-note' }, note) : null, ...body);
 
-    function metricSection(data, host, year) {
+    function metricSection(data, host, year, mount) {
         const pick = kind => data.series[kind].find(r => r.year === year), box = el('div');
         const select = el('select', { 'aria-label': 'Tahun metrik' });
         for (const y of [...data.years].reverse()) select.append(el('option', { value: y }, `${y}${y === data.snapshot_year ? ' (berjalan)' : ''}`));
         select.value = year;
         select.onchange = () => {
-            const next = metricSection(data, el('div'), Number(select.value));
+            W = chartWidth(mount);
+            mount.dataset.uamYear = select.value;
+            const next = metricSection(data, el('div'), Number(select.value), mount);
             host.replaceWith(next);
             next.querySelector('select').focus();
         };
@@ -133,6 +138,7 @@
     }
 
     function render(mount, data) {
+        W = chartWidth(mount);
         const j = data.journal, k = data.kpis, root = el('div', { class: 'uam' }), dashboard = new URL(`#journals?journal=${j.id}`, base).href;
         const meta = [j.issn.length ? 'ISSN ' + j.issn.join(', ') : null, j.doaj === null ? null : `DOAJ: ${j.doaj ? 'ya' : 'tidak'}`, j.apc_usd === null ? null : `APC daftar US$ ${num(j.apc_usd)}`].filter(Boolean).join(' · ');
         root.append(el('p', { class: 'uam-note' }, `${meta ? meta + ' · ' : ''}Data OpenAlex, diperbarui ${new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeZone: 'Asia/Jakarta' }).format(new Date(data.updated_at))}.`));
@@ -141,7 +147,7 @@
             ['Kolaborasi internasional', pct(k.international), 'Lebih dari satu negara'], ['Rerata FWCI', dec(k.fwci), `${num(k.fwci_n)} karya · ${pct(k.fwci_coverage)}`], ['Karya top 10 persen', num(k.top10), `Dari ${num(k.eligible)} karya bermetrik`]])
             kpis.append(el('div', { class: 'uam-card' }, el('small', {}, label), el('div', { class: 'uam-value' }, value), el('small', {}, note)));
         root.append(kpis, el('h3', {}, 'Dampak sitasi jurnal'));
-        root.append(metricSection(data, el('div'), data.default_year));
+        root.append(metricSection(data, el('div'), data.years.includes(Number(mount.dataset.uamYear)) ? Number(mount.dataset.uamYear) : data.default_year, mount));
         const grid = el('div', { class: 'uam-grid' });
         grid.append(card('Jenis karya menurut tahun', null, ...stackedChart(data.types.rows, data.types.names, { label: 'Jenis karya menurut tahun' })),
             card('Komposisi akses per tahun', 'Persentase karya per status OA', ...stackedChart(data.access.rows, data.access.names, { label: 'Komposisi akses per tahun', percent: true })),
@@ -198,6 +204,9 @@
             const data = await response.json();
             if (data.schema_version !== 1 || data.journal?.id !== id) throw new Error();
             render(mount, data);
+            // Redraw when the content column width changes noticeably (e.g. rotating a phone).
+            let last = mount.clientWidth;
+            if (window.ResizeObserver) new ResizeObserver(() => { const w = mount.clientWidth; if (Math.abs(w - last) > 40) { last = w; render(mount, data); } }).observe(mount);
         } catch { mount.textContent = 'Metrik jurnal belum dapat dimuat.'; }
     }
     function start() {
