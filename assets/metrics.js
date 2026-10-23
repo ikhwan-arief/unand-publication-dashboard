@@ -12,6 +12,8 @@ export const SDGS = ['Tanpa kemiskinan', 'Tanpa kelaparan', 'Kehidupan sehat', '
     'Industri & inovasi', 'Berkurangnya kesenjangan', 'Kota berkelanjutan', 'Konsumsi bertanggung jawab',
     'Penanganan perubahan iklim', 'Ekosistem lautan', 'Ekosistem daratan', 'Perdamaian & kelembagaan', 'Kemitraan'];
 export const BINS = [[0, 0, '0 sitasi'], [1, 5, '1–5'], [6, 10, '6–10'], [11, 50, '11–50'], [51, 100, '51–100'], [101, Infinity, '>100']];
+// 'all' is the union of the three Unand scopes; audit candidates are never part of it.
+export const UNAND_SCOPES = ['affiliated', 'funded', 'published'];
 export const validNumber = value => typeof value === 'number' && Number.isFinite(value);
 export const JOURNAL_METRIC_POLICY = {
     version: 1, citation_history_years: 10, small_base: 30,
@@ -191,7 +193,8 @@ export function matches(work, filter, entities, year = new Date().getFullYear())
         filter = filter.journal ? { scope: 'published', corpus: 'all', q: filter.q } : withoutPeriod(filter);
     }
     const scopes = work.scopes || [];
-    if (!scopes.includes(filter.scope || 'affiliated'))
+    const scope = filter.scope || 'affiliated';
+    if (scope === 'all' ? !scopes.some(s => UNAND_SCOPES.includes(s)) : !scopes.includes(scope))
         return false;
     if ((filter.corpus || 'core') === 'core' && work.xpac)
         return false;
