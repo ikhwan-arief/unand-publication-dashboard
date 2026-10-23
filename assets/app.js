@@ -1,4 +1,4 @@
-import { MODULES, SDGS, METRIC_KINDS, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod } from './metrics.js';
+import { MODULES, SDGS, METRIC_KINDS, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod, workSdgs, citingShard, CITING_FIELDS } from './metrics.js';
 import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderJournalMetrics, renderJournalCitations, renderJournalTable, METRIC_TITLES, metricYear } from './journal-panel.js';
 import { EXPORT_CONTROLS, SHOW_AUDIT_TAB, CONTENT_PROTECTION } from './config.js';
 import { el, panel, bar, line, donut, stacked, scatter, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE } from './charts.js';
@@ -840,13 +840,124 @@ function methodPanel(grid) {
     }
     p.node.append(el('p', { class: 'panel-note' }, `Snapshot ${manifest.updated_at}. ${manifest.authorships_refreshed_at?'Metadata authorship diperiksa ulang '+formatDate(manifest.authorships_refreshed_at)+'. ':''}Metadata OpenAlex CC0; hak dokumen mengikuti lisensi aslinya. Jaringan dibatasi maksimal 40 simpul dan 150 hubungan. Sumber: help.openalex.org.`));
 }
+// Shared work detail: tabs "Detail" and "Karya penyitir" for every module that opens a work.
+let detailToken = 0;
+const citingCache = new Map();
+function workTabs(body) {
+    const list = el('div', { class: 'work-tabs', role: 'tablist', 'aria-label': 'Bagian detail publikasi' });
+    const tabs = [['detail', 'Detail'], ['citing', 'Karya penyitir']].map(([key, label], i) =>
+        el('button', { type: 'button', role: 'tab', id: `work-tab-${key}`, 'aria-controls': `work-panel-${key}`, 'aria-selected': String(i === 0), tabindex: i === 0 ? '0' : '-1' }, label));
+    const panels = ['detail', 'citing'].map((key, i) => { const p = el('div', { role: 'tabpanel', id: `work-panel-${key}`, 'aria-labelledby': `work-tab-${key}`, tabindex: '0' }); p.hidden = i !== 0; return p; });
+    const select = i => tabs.forEach((tab, j) => { tab.setAttribute('aria-selected', String(i === j)); tab.tabIndex = i === j ? 0 : -1; panels[j].hidden = i !== j; if (i === j) tab.focus(); });
+    tabs.forEach((tab, i) => {
+        tab.onclick = () => select(i);
+        tab.onkeydown = e => { if (['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) { e.preventDefault(); select(e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length); } };
+    });
+    list.append(...tabs);
+    body.append(list, ...panels);
+    return { panel: panels[0], citingPanel: panels[1], citingTab: tabs[1] };
+}
+function sdgSection(w) {
+    const box = el('section', { class: 'work-sdgs', 'aria-labelledby': 'work-sdg-title' }), policy = manifest.sdg || {};
+    box.append(el('h3', { id: 'work-sdg-title' }, 'Tujuan Pembangunan Berkelanjutan (SDGs)'));
+    const goals = workSdgs(w);
+    if (goals === null) box.append(el('p', {}, 'Field SDG tidak tersedia pada snapshot ini.'));
+    else if (!goals.length) box.append(el('p', {}, 'Tidak ada label SDG yang teridentifikasi dalam data saat ini.'));
+    else {
+        const list = el('ul', { class: 'sdg-list' });
+        for (const g of goals) {
+            const button = el('button', { type: 'button', class: 'sdg-chip', 'data-sdg': g.id, title: 'Tampilkan karya lain dengan SDG ini' }, `SDG ${g.number} · ${g.name}`);
+            // Same drill as the SDG charts: keeps the journal page or author filter that is active.
+            button.onclick = () => { $('detail-dialog').close(); drill({ sdg: g.id }); };
+            const li = el('li'); li.append(button, el('span', { class: 'sdg-score' }, g.score === null ? 'skor tidak tersedia' : `skor keyakinan ${decimal(g.score)}`)); list.append(li);
+        }
+        box.append(list);
+    }
+    const classifier = policy.classifier === 'openalex-2026-10' ? 'pengklasifikasi OpenAlex (sejak Oktober 2026)' : 'versi pengklasifikasi tidak tercatat';
+    box.append(el('p', { class: 'panel-note' }, `Sumber: OpenAlex, field ${policy.field || 'sustainable_development_goals'} · ${classifier}${policy.threshold ? ` · ambang skor ${decimal(policy.threshold)}` : ''} · diambil ${formatDate(policy.retrieved_at || manifest.updated_at)}${policy.scores === false || !w.sdg_scores ? ' · skor tidak tersimpan pada snapshot ini' : ''}.`),
+        el('p', { class: 'panel-note' }, 'Klasifikasi otomatis berdasarkan metadata teks; bukan penilaian atau verifikasi dampak nyata terhadap SDG. Skor adalah tingkat keyakinan pengklasifikasi, bukan probabilitas atau ukuran kontribusi. Satu karya dapat memiliki nol, satu, atau beberapa tujuan.'));
+    return box;
+}
+async function citingFor(id) {
+    const info = manifest.files.citing;
+    if (!info?.entries?.length) return { status: 'unavailable', rows: [] };
+    const path = `data/citing/${info.large?.includes(id) ? 'w/' + id : citingShard(id)}.json`, entry = info.entries.find(e => e.path === path);
+    if (!entry) return { status: info.status, retrieved_at: info.retrieved_at, rows: [] };
+    if (!citingCache.has(path)) citingCache.set(path, getJSON(path).catch(error => { citingCache.delete(path); throw error; }));
+    const shard = await citingCache.get(path);
+    return { status: shard.status, retrieved_at: shard.retrieved_at, rows: (shard.cited[id] || []).map(i => Object.fromEntries(CITING_FIELDS.map((f, j) => [f, shard.works[i][j]]))) };
+}
+async function loadCiting(w, panel, tab, token) {
+    panel.replaceChildren(el('p', { 'aria-live': 'polite' }, 'Memuat karya penyitir…'));
+    if (!w.scopes.some(s => s === 'published' || s === 'affiliated')) {
+        panel.replaceChildren(el('p', {}, 'Daftar penyitir disiapkan untuk karya terbitan Jurnal Unand dan karya berafiliasi Unand.'));
+        return;
+    }
+    let result;
+    try { result = await citingFor(w.id); }
+    catch { if (token === detailToken) panel.replaceChildren(el('p', { class: 'notice error' }, 'Data karya penyitir gagal dimuat. Periksa koneksi lalu buka kembali detail karya.')); return; }
+    if (token !== detailToken) return;
+    if (result.status === 'unavailable') { panel.replaceChildren(el('p', {}, 'Data karya penyitir belum tersedia pada snapshot ini.')); return; }
+    tab.textContent = `Karya penyitir (${num(result.rows.length)})`;
+    renderCiting(panel, w, result);
+}
+function renderCiting(panel, w, result) {
+    const rows = result.rows, counts = el('div', { class: 'detail-grid' });
+    for (const [label, value] of [['Sitasi kumulatif (OpenAlex)', num(w.citations)], ['Karya penyitir teridentifikasi', num(rows.length)], ['Sumber relasi', 'OpenAlex']]) { const c = el('div'); c.append(el('small', {}, label), el('span', {}, value)); counts.append(c); }
+    const status = result.status === 'stale' ? 'Data penyitir dari pengambilan sebelumnya karena pembaruan terakhir gagal' : result.status === 'sample' ? 'Sampel uji, belum lengkap' : 'Lengkap untuk snapshot ini';
+    panel.replaceChildren(counts, el('p', { class: 'panel-note' }, `${status} · diambil ${result.retrieved_at ? formatDate(result.retrieved_at) : 'tanggal tidak tercatat'}. Relasi dicatat hanya bila daftar referensi karya penyitir di OpenAlex memuat karya ini. Jumlah penyitir dapat berbeda dari sitasi kumulatif karena waktu pengambilan dan pencocokan referensi. Tahun terbit karya penyitir bukan tahun sitasi pada grafik Sitasi per tahun.`));
+    // Distinguish "no citations", "not in the local sample" and "cited but no citing work proven by a reference list".
+    if (!rows.length) {
+        const message = !w.citations ? 'Karya ini belum memiliki sitasi dalam data saat ini.'
+            : result.status === 'sample' ? `OpenAlex mencatat ${num(w.citations)} sitasi untuk karya ini, tetapi karya ini belum termasuk sampel uji data penyitir. Daftar lengkap tersedia setelah pengambilan penuh.`
+            : `OpenAlex mencatat ${num(w.citations)} sitasi, tetapi pada pengambilan ini belum ada karya penyitir yang dapat dibuktikan melalui daftar referensinya.`;
+        panel.append(el('p', {}, message));
+        return;
+    }
+    const toolbar = el('div', { class: 'table-toolbar' }), search = el('input', { class: 'search-input', type: 'search', placeholder: 'Cari judul, penulis, atau sumber', 'aria-label': 'Cari karya penyitir' });
+    const order = el('select', { 'aria-label': 'Urutkan karya penyitir' });
+    for (const [v, l] of [['desc', 'Tahun terbaru'], ['asc', 'Tahun terlama']]) option(order, v, l);
+    const shown = el('span', { class: 'panel-note', role: 'status', 'aria-live': 'polite' });
+    toolbar.append(search, order, shown);
+    const wrap = el('div', { class: 'table-scroll' }), table = el('table', { class: 'citing-table', 'aria-label': 'Karya penyitir' }), head = el('tr'), body = el('tbody');
+    for (const [h, cls] of [['Tahun', 'num'], ['Karya penyitir', ''], ['Sumber', ''], ['Penulis', ''], ['Jenis', ''], ['Provenance', ''], ['Tautan', '']]) head.append(el('th', { scope: 'col', class: cls }, h));
+    const thead = el('thead'); thead.append(head); table.append(thead, body); wrap.append(table);
+    const more = el('button', { type: 'button', class: 'button secondary' }, 'Muat lebih banyak');
+    let limit = 50;
+    const text = r => [r.title, r.source, ...(r.authors || [])].join(' ').toLocaleLowerCase('id');
+    const draw = () => {
+        const term = search.value.trim().toLocaleLowerCase('id'), dir = order.value === 'asc' ? 1 : -1;
+        const list = rows.filter(r => !term || text(r).includes(term)).sort((a, b) => ((a.year ?? 0) - (b.year ?? 0)) * dir || String(a.title).localeCompare(String(b.title)));
+        body.replaceChildren();
+        for (const r of list.slice(0, limit)) {
+            const authors = r.authors?.length ? r.authors.join('; ') + (r.author_count > r.authors.length ? ` dan ${num(r.author_count - r.authors.length)} lainnya` : '') : 'Tidak tersedia';
+            const link = safeURL(r.url) ? external('Buka ↗', r.url) : safeURL(r.doi) ? external('DOI ↗', r.doi) : el('span', {}, 'Tidak tersedia');
+            const tr = el('tr', { 'data-citing-id': r.id });
+            tr.append(el('td', { class: 'num' }, r.year ?? '—'), el('td', {}, r.title || 'Judul tidak tersedia'), el('td', {}, r.source || 'Tidak tersedia'),
+                el('td', {}, authors), el('td', {}, r.type || 'Tidak tersedia'), el('td', {}, 'OpenAlex'));
+            // el() takes text only, so the link element is appended to its cell.
+            const cell = el('td'); cell.append(link); tr.append(cell);
+            body.append(tr);
+        }
+        if (!list.length) { const tr = el('tr'); tr.append(el('td', { colspan: '7' }, 'Tidak ada karya penyitir yang cocok.')); body.append(tr); }
+        shown.textContent = `Menampilkan ${num(Math.min(limit, list.length))} dari ${num(list.length)}${term ? ` hasil pencarian (total ${num(rows.length)})` : ''}`;
+        more.hidden = list.length <= limit;
+    };
+    search.oninput = () => { limit = 50; draw(); };
+    order.onchange = () => { limit = 50; draw(); };
+    more.onclick = () => { limit += 50; draw(); };
+    panel.append(toolbar, wrap, more);
+    draw();
+}
 async function openWork(id) {
-    const dialog = $('detail-dialog');
+    // Each opening gets a token, so a slower response for a previous work is never shown.
+    const token = ++detailToken, dialog = $('detail-dialog');
     $('detail-body').replaceChildren(el('p', {}, 'Memuat rincian publikasi…'));
     if (!dialog.open)
         dialog.showModal();
     try {
         const w = await task('detail', { id });
+        if (token !== detailToken) return;
         if (!w)
             throw new Error('Karya tidak ditemukan dalam periode yang dimuat.');
         const body = $('detail-body');
@@ -856,15 +967,18 @@ async function openWork(id) {
         if (w.retracted)
             body.append(el('p', { class: 'notice error' }, 'Metadata memiliki flag retraksi. Periksa sumber dan konteks sebelum menggunakan karya ini.'));
         body.append(el('p', {}, `${w.source_name || 'Sumber tidak diketahui'} · ${w.year || 'Tahun tidak diketahui'} · ${w.type}`));
+        const { panel, citingPanel, citingTab } = workTabs(body);
+        loadCiting(w, citingPanel, citingTab, token);
         const details = el('div', { class: 'detail-grid' });
         for (const [label, value] of [['Sitasi kumulatif', num(w.citations)], ['FWCI', decimal(w.fwci)], ['Status akses', w.oa_status], ['Topik utama', w.topic_name || 'Tidak tersedia'], ['DOI', w.doi || 'Tidak tersedia'], ['Cakupan', w.scopes.map(s => scopeName[s] || 'Kandidat audit').join(' · ')]]) {
             const c = el('div');
             c.append(el('small', {}, label), el('span', {}, value));
             details.append(c);
         }
-        body.append(details);
-        fwciHelp(body, { work: true });
-        body.append(el('h3', {}, 'Penulis dan afiliasi Unand'));
+        panel.append(details);
+        fwciHelp(panel, { work: true });
+        panel.append(sdgSection(w));
+        panel.append(el('h3', {}, 'Penulis dan afiliasi Unand'));
         const authors = el('ul', { class: 'detail-list' });
         for (const a of w.author_names) {
             const li = el('li', {}, `${a.name || a.id}${a.unand ? ' · Unand' : ''}${a.position === 'first' ? ' · penulis pertama' : ''}${a.corresponding ? ' · corresponding' : ''}`);
@@ -875,17 +989,17 @@ async function openWork(id) {
                 li.append(el('div', { class: 'work-source' }, a.institution_names.join('; ')));
             authors.append(li);
         }
-        body.append(authors);
+        panel.append(authors);
         if (w.funding.length)
-            body.append(el('p', {}, 'Pendana tercatat: ' + w.funding.filter(Boolean).map(f => f.name).join('; ')));
+            panel.append(el('p', {}, 'Pendana tercatat: ' + w.funding.filter(Boolean).map(f => f.name).join('; ')));
         if (w.award_details.length)
-            body.append(el('p', {}, 'Hibah: ' + w.award_details.filter(Boolean).map(a => a.name).join('; ')));
+            panel.append(el('p', {}, 'Hibah: ' + w.award_details.filter(Boolean).map(a => a.name).join('; ')));
         if (w.source_details) {
             const s = w.source_details, flag = v => typeof v === 'boolean' ? (v ? 'Ya' : 'Tidak') : 'Tidak tersedia';
-            body.append(el('p', {}, `Metadata sumber · ISSN: ${(s.issn || []).join(', ') || 'Tidak tersedia'} · DOAJ: ${flag(s.doaj)} · OJS: ${flag(s.ojs)} · APC daftar sumber: ${s.apc_usd === null || s.apc_usd === undefined ? 'Tidak tersedia' : 'US$ ' + decimal(s.apc_usd)}.`));
+            panel.append(el('p', {}, `Metadata sumber · ISSN: ${(s.issn || []).join(', ') || 'Tidak tersedia'} · DOAJ: ${flag(s.doaj)} · OJS: ${flag(s.ojs)} · APC daftar sumber: ${s.apc_usd === null || s.apc_usd === undefined ? 'Tidak tersedia' : 'US$ ' + decimal(s.apc_usd)}.`));
         }
         if (w.apc_list || w.apc_paid)
-            body.append(el('p', {}, `APC daftar: ${w.apc_list?.value_usd === undefined ? 'Tidak tersedia' : 'US$ ' + decimal(w.apc_list.value_usd)}. Estimasi pembayaran: ${w.apc_paid?.value_usd === undefined ? 'Tidak tersedia' : 'US$ ' + decimal(w.apc_paid.value_usd)}. Provenance: ${w.apc_paid?.provenance || 'Tidak tersedia'}. Bukan realisasi belanja Unand.`));
+            panel.append(el('p', {}, `APC daftar: ${w.apc_list?.value_usd === undefined ? 'Tidak tersedia' : 'US$ ' + decimal(w.apc_list.value_usd)}. Estimasi pembayaran: ${w.apc_paid?.value_usd === undefined ? 'Tidak tersedia' : 'US$ ' + decimal(w.apc_paid.value_usd)}. Provenance: ${w.apc_paid?.provenance || 'Tidak tersedia'}. Bukan realisasi belanja Unand.`));
         const links = el('div', { class: 'detail-links' });
         for (const [label, url] of [['OpenAlex ↗', 'https://openalex.org/' + w.id], ['DOI ↗', w.doi], ['Salinan terbuka ↗', w.oa_url]])
             if (safeURL(url)) {
@@ -893,8 +1007,8 @@ async function openWork(id) {
                 a.classList.add('button', 'secondary');
                 links.append(a);
             }
-        body.append(links);
-        body.append(el('h3', {}, 'Lokasi dan versi salinan'));
+        panel.append(links);
+        panel.append(el('h3', {}, 'Lokasi dan versi salinan'));
         const list = el('ul', { class: 'detail-list' });
         for (const l of w.locations) {
             const li = el('li', {}, `${l.version || 'Versi tidak diketahui'} · ${l.license || 'Lisensi tidak diketahui'} · `);
@@ -904,10 +1018,10 @@ async function openWork(id) {
             }
             list.append(li);
         }
-        body.append(list, el('p', {}, `Data diambil ${formatDate(manifest.updated_at)}. PDF dan XML belum diperiksa dengan mengunduh kontennya.`));
+        panel.append(list, el('p', {}, `Data diambil ${formatDate(manifest.updated_at)}. PDF dan XML belum diperiksa dengan mengunduh kontennya.`));
     }
     catch (e) {
-        $('detail-body').replaceChildren(el('p', {}, e.message));
+        if (token === detailToken) $('detail-body').replaceChildren(el('p', {}, e.message));
     }
 }
 function formatDate(value) { return new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeStyle: 'short', timeZone: 'Asia/Jakarta' }).format(new Date(value)) + ' WIB'; }

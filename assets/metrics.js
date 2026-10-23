@@ -11,7 +11,25 @@ export const SDGS = ['Tanpa kemiskinan', 'Tanpa kelaparan', 'Kehidupan sehat', '
     'Kesetaraan gender', 'Air bersih & sanitasi', 'Energi bersih', 'Pekerjaan & pertumbuhan ekonomi',
     'Industri & inovasi', 'Berkurangnya kesenjangan', 'Kota berkelanjutan', 'Konsumsi bertanggung jawab',
     'Penanganan perubahan iklim', 'Ekosistem lautan', 'Ekosistem daratan', 'Perdamaian & kelembagaan', 'Kemitraan'];
+// Official Indonesian goal names (used in the work detail); SDGS above stays the short chart label.
+export const SDG_NAMES = ['Tanpa Kemiskinan', 'Tanpa Kelaparan', 'Kehidupan Sehat dan Sejahtera', 'Pendidikan Berkualitas',
+    'Kesetaraan Gender', 'Air Bersih dan Sanitasi Layak', 'Energi Bersih dan Terjangkau', 'Pekerjaan Layak dan Pertumbuhan Ekonomi',
+    'Industri, Inovasi dan Infrastruktur', 'Berkurangnya Kesenjangan', 'Kota dan Permukiman yang Berkelanjutan',
+    'Konsumsi dan Produksi yang Bertanggung Jawab', 'Penanganan Perubahan Iklim', 'Ekosistem Lautan', 'Ekosistem Daratan',
+    'Perdamaian, Keadilan dan Kelembagaan yang Tangguh', 'Kemitraan untuk Mencapai Tujuan'];
+// Goals of one work, highest classifier score first, goal number as tie-breaker; scores stay null when unknown.
+export function workSdgs(work) {
+    if (!Array.isArray(work.sdgs)) return null;
+    return [...new Set(work.sdgs.map(String))].filter(id => /^(?:[1-9]|1[0-7])$/.test(id))
+        .map(id => ({ id, number: Number(id), name: SDG_NAMES[Number(id) - 1], score: validNumber(work.sdg_scores?.[id]) ? work.sdg_scores[id] : null }))
+        .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || a.number - b.number);
+}
 export const BINS = [[0, 0, '0 sitasi'], [1, 5, '1–5'], [6, 10, '6–10'], [11, 50, '11–50'], [51, 100, '51–100'], [101, Infinity, '>100']];
+// Citing works are stored in shards keyed by the cited work, so build and browser locate them the same way.
+export const CITING_SHARDS = 256, CITING_OWN_FILE = 1000;
+export const citingShard = id => Number(String(id).replace(/^W/, '')) % CITING_SHARDS;
+// Compact citing-work rows: [id, doi, title, year, date, type, source, authors, author_count, oa, url].
+export const CITING_FIELDS = ['id', 'doi', 'title', 'year', 'date', 'type', 'source', 'authors', 'author_count', 'oa', 'url'];
 // 'all' is the union of the three Unand scopes; audit candidates are never part of it.
 export const UNAND_SCOPES = ['affiliated', 'funded', 'published'];
 export const validNumber = value => typeof value === 'number' && Number.isFinite(value);
@@ -179,7 +197,11 @@ export function journalWidgetData(journal, works, entities, manifest, dataset) {
         access: { names: statuses, rows: perYear(w => w.oa_status, statuses) },
         countries: summary.top.countries.slice(0, 8).map(r => [r.name, r.count]),
         origin: { unand: own.local, external: own.count - own.local },
-        articles: summary.publications.slice(0, 20).map(w => ({ title: w.title, year: w.year, citations: w.citations, doi: w.doi || null, oa: w.oa_status })) };
+        // SDG labels per article ([goal, score|null], highest score first) and unique works per goal for the journal.
+        articles: summary.publications.slice(0, 20).map(w => ({ title: w.title, year: w.year, citations: w.citations, doi: w.doi || null, oa: w.oa_status,
+            sdgs: (workSdgs(works.find(x => x.id === w.id) || {}) || []).map(g => [g.number, g.score]) })),
+        sdgs: summary.top.sdgs.filter(r => /^(?:[1-9]|1[0-7])$/.test(r.id)).map(r => [Number(r.id), r.count]),
+        sdg_policy: { classifier: manifest.sdg?.classifier || 'unknown', scores: Boolean(manifest.sdg?.scores) } };
 }
 // Recap across all mapped journals: an unweighted mean of journal values plus a pooled ratio of summed parts.
 export function journalRecap(dataset, year) {
