@@ -17,7 +17,7 @@
             fwciNote: y => `Rerata FWCI karya terbitan ${y}; acuan global 1`, fwciCover: (n, t, c) => `${n} dari ${t} karya memiliki FWCI valid · cakupan ${c}`,
             fwciWindow: (a, b) => `Jendela sitasi ${a}–${b} belum penuh.`, fwciSmall: 'Basis kecil (kurang dari 30 karya bermetrik).',
             fwciDef: 'FWCI karya = sitasi diterima ÷ sitasi yang diharapkan untuk tahun, jenis, dan subbidang yang sama (OpenAlex).', fwciDash: 'Garis putus-putus: acuan global FWCI 1',
-            perYear: 'Sitasi per tahun', perYearNote: y => `Sitasi yang diterima seluruh karya jurnal per tahun sitasi; ${y}* belum lengkap`, citations: ' sitasi', worksUnit: ' karya',
+            perYear: 'Sitasi per tahun', citationsLabel: 'Sitasi', totalWorks: n => `total ${n} karya`, perYearNote: y => `Sitasi yang diterima seluruh karya jurnal per tahun sitasi; ${y}* belum lengkap`, citations: ' sitasi', worksUnit: ' karya',
             total: s => `Total sitasi ${s}`, totalRecent: s => `Total sitasi ${s} kepada karya terbitan ${s}`, recentNote: (n, s) => `Angka kedua hanya menghitung sitasi kepada ${n} karya yang terbit pada ${s}.`,
             output: 'Perjalanan publikasi jurnal', outputNote: 'Jumlah karya menurut tahun publikasi', of: (a, b) => `${a} dari ${b} karya`,
             yes: 'ya', no: 'tidak', apc: v => `APC daftar US$ ${v}`, updated: d => `Data OpenAlex, diperbarui ${d}.`,
@@ -35,7 +35,7 @@
             fwciNote: y => `Mean FWCI of works published in ${y}; global benchmark 1`, fwciCover: (n, t, c) => `${n} of ${t} works have a valid FWCI · coverage ${c}`,
             fwciWindow: (a, b) => `Citation window ${a}–${b} is not complete yet.`, fwciSmall: 'Small base (fewer than 30 works with a score).',
             fwciDef: 'Work FWCI = citations received ÷ citations expected for the same year, type and subfield (OpenAlex).', fwciDash: 'Dashed line: global FWCI benchmark 1',
-            perYear: 'Citations per year', perYearNote: y => `Citations received by all journal works per citation year; ${y}* is not complete`, citations: ' citations', worksUnit: ' works',
+            perYear: 'Citations per year', citationsLabel: 'Citations', totalWorks: n => `total ${n} works`, perYearNote: y => `Citations received by all journal works per citation year; ${y}* is not complete`, citations: ' citations', worksUnit: ' works',
             total: s => `Total citations ${s}`, totalRecent: s => `Total citations ${s} to works published ${s}`, recentNote: (n, s) => `The second figure only counts citations to the ${n} works published in ${s}.`,
             output: 'Journal output by year', outputNote: 'Number of works by publication year', of: (a, b) => `${a} of ${b} works`,
             yes: 'yes', no: 'no', apc: v => `List APC US$ ${v}`, updated: d => `OpenAlex data, updated ${d}.`,
@@ -65,9 +65,12 @@
 .uam select{font:inherit;padding:4px 8px;max-width:100%}.uam-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8em;margin-top:6px}
 .uam-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .uam table{width:100%;border-collapse:collapse;font-size:.92em}.uam th,.uam td{padding:6px 8px;border-bottom:1px solid rgba(128,128,128,.25);text-align:left;vertical-align:top}
+.uam{position:relative}.uam-tip{position:absolute;z-index:20;pointer-events:none;background:rgba(17,24,39,.92);color:#fff;font-size:.8em;line-height:1.35;padding:5px 8px;border-radius:5px;white-space:nowrap;display:none}
+.uam-years th,.uam-years td{padding:4px 6px;font-size:.85em;text-align:right;white-space:nowrap}.uam-years th:first-child{text-align:left}
 .uam td.n,.uam th.n{text-align:right;white-space:nowrap}.uam-scroll{overflow-x:auto}.uam details{margin-top:6px;font-size:.85em}.uam summary{cursor:pointer}`;
     const el = (tag, attrs = {}, ...kids) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) v !== undefined && v !== null && n.setAttribute(k, v); n.append(...kids.filter(k => k !== null && k !== undefined)); return n; };
-    const svg = (tag, attrs = {}, title) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (title) n.append(Object.assign(document.createElementNS(NS, 'title'), { textContent: title })); return n; };
+    // Hover/tap text lives in data-tip and is shown by the widget's own tooltip (instant, also on touch).
+    const svg = (tag, attrs = {}, tip) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (tip) n.setAttribute('data-tip', tip); return n; };
     const safeURL = url => { try { const u = new URL(url); return ['http:', 'https:'].includes(u.protocol) ? u.href : null; } catch { return null; } };
     const range = (a, b) => a === b ? String(a) : `${a}–${b}`;
 
@@ -98,13 +101,17 @@
         let d = '', open = false;
         rows.forEach((r, i) => { if (r.y === null) { open = false; return; } d += `${open ? 'L' : 'M'}${x(i).toFixed(1)},${y(r.y).toFixed(1)}`; open = true; });
         s.append(svg('path', { d, fill: 'none', stroke: 'var(--uam-accent)', 'stroke-width': 2 }));
-        rows.forEach((r, i) => r.y !== null && s.append(svg('circle', { cx: x(i), cy: y(r.y), r: r.x === highlight ? 4.5 : 2.8, fill: r.x === highlight ? 'var(--uam-accent)' : 'currentColor', 'fill-opacity': r.x === highlight ? 1 : .55 }, `${r.x}: ${r.tip ?? dec(r.y)}${unit}`)));
+        rows.forEach((r, i) => r.y !== null && s.append(svg('circle', { cx: x(i), cy: y(r.y), r: r.x === highlight ? 4.5 : 2.8, fill: r.x === highlight ? 'var(--uam-accent)' : 'currentColor', 'fill-opacity': r.x === highlight ? 1 : .55 })));
+        // Transparent full-height column per year: hovering anywhere above a year shows its value.
+        const col = (W - L - R) / Math.max(rows.length - 1, 1);
+        rows.forEach((r, i) => s.append(svg('rect', { x: x(i) - col / 2, y: T, width: col, height: H - T - B, fill: 'transparent', class: 'uam-hit' }, `${r.x}: ${r.y === null ? S.na : (r.tip ?? dec(r.y)) + unit}`)));
         xLabels(s, rows.map(r => r.x), x);
         return s;
     }
     function barChart(rows, { label, unit = '', highlight }) {
         const maxY = Math.max(...rows.map(r => r.y), 1) * 1.1, s = frame(label, maxY), slot = (W - L - R) / rows.length, y = v => T + (H - T - B) * (1 - v / maxY);
-        rows.forEach((r, i) => s.append(svg('rect', { x: L + slot * i + slot * .15, y: y(r.y), width: slot * .7, height: H - B - y(r.y), rx: 1.5, fill: 'var(--uam-accent)', 'fill-opacity': highlight && !highlight(r) ? .45 : .95 }, `${r.x}: ${num(r.y)}${unit}`)));
+        rows.forEach((r, i) => s.append(svg('rect', { x: L + slot * i + slot * .15, y: y(r.y), width: slot * .7, height: H - B - y(r.y), rx: 1.5, fill: 'var(--uam-accent)', 'fill-opacity': highlight && !highlight(r) ? .45 : .95 })));
+        rows.forEach((r, i) => s.append(svg('rect', { x: L + slot * i, y: T, width: slot, height: H - T - B, fill: 'transparent', class: 'uam-hit' }, `${r.x}: ${num(r.y)}${unit}`)));
         xLabels(s, rows.map(r => r.x), i => L + slot * (i + .5));
         return s;
     }
@@ -120,6 +127,8 @@
                 top -= h;
             });
         });
+        rows.forEach((r, i) => s.append(svg('rect', { x: L + slot * i, y: T, width: slot, height: H - T - B, fill: 'transparent', class: 'uam-hit' },
+            `${r[0]} · ${names.map((name, j) => `${name}: ${percent && r[1] ? df.format(r[j + 2] / r[1] * 100) + '%' : num(r[j + 2])}`).join(' · ')} · ${S.totalWorks(num(r[1]))}`)));
         xLabels(s, rows.map(r => r[0]), i => L + slot * (i + .5));
         const legend = el('div', { class: 'uam-legend' });
         names.forEach((name, j) => { const box = el('i'); box.style.background = colors[j].c.startsWith('var') ? 'var(--uam-accent)' : 'currentColor'; box.style.opacity = colors[j].o; legend.append(el('span', {}, box, name)); });
@@ -136,6 +145,10 @@
         return s;
     }
     const numbers = (head, rows) => { const d = el('details', {}, el('summary', {}, S.numbers)), t = el('table'), tr = el('tr'); head.forEach((h, i) => tr.append(el('th', { class: i ? 'n' : '' }, h))); t.append(el('thead', {}, tr)); const b = el('tbody'); rows.forEach(r => { const row = el('tr'); r.forEach((v, i) => row.append(el('td', { class: i ? 'n' : '' }, String(v)))); b.append(row); }); t.append(b); d.append(el('div', { class: 'uam-scroll' }, t)); return d; };
+    // Compact table with years across, shown under a chart.
+    const yearTable = (rows, label) => { const head = el('tr', {}, el('th', {}, S.year)), values = el('tr', {}, el('th', {}, label));
+        rows.forEach(([year, value]) => { head.append(el('th', {}, year)); values.append(el('td', { 'data-uam-year': String(year).replace('*', '') }, value)); });
+        return el('div', { class: 'uam-scroll' }, el('table', { class: 'uam-years' }, el('tbody', {}, head, values))); };
     const card = (title, note, ...body) => el('div', { class: 'uam-card' }, el('h4', {}, title), note ? el('p', { class: 'uam-note' }, note) : null, ...body);
 
     function metricSection(data, host, year, mount) {
@@ -175,6 +188,7 @@
         const c = data.citations, w = c.three_year.find(r => r.year === year), span = range(w.from, w.to);
         grid.append(card(S.perYear, S.perYearNote(data.snapshot_year),
             barChart(c.by_year.map(r => ({ x: `${r.year}${r.partial ? '*' : ''}`, y: r.citations, year: r.year })), { label: S.perYear, unit: S.citations, highlight: r => r.year >= w.from && r.year <= w.to }),
+            yearTable(c.by_year.map(r => [`${r.year}${r.partial ? '*' : ''}`, num(r.citations)]), S.citationsLabel),
             el('dl', {}, el('dt', {}, S.total(span)), el('dd', { 'data-uam': 'all' }, num(w.citations)), el('dt', {}, S.totalRecent(span)), el('dd', { 'data-uam': 'recent' }, num(w.recent_citations))),
             el('p', { class: 'uam-note' }, S.recentNote(num(w.recent_documents), span))));
         const years = data.types.rows.map(r => ({ x: r[0], y: r[1] }));
@@ -213,6 +227,18 @@
         }
         table.append(el('thead', {}, head), body);
         root.append(el('div', { class: 'uam-scroll' }, table), el('p', { class: 'uam-note' }, S.footer(num(data.articles.length))));
+        // One tooltip per widget: follows the pointer over any [data-tip] element; a tap shows it on touch screens.
+        const tip = el('div', { class: 'uam-tip', role: 'status' });
+        root.append(tip);
+        const show = event => {
+            const target = event.target.closest?.('[data-tip]');
+            if (!target || !root.contains(target)) { tip.style.display = 'none'; return; }
+            tip.textContent = target.getAttribute('data-tip'); tip.style.display = 'block';
+            const box = root.getBoundingClientRect(), x = event.clientX - box.left, y = event.clientY - box.top;
+            tip.style.left = `${Math.max(0, Math.min(x + 12, box.width - tip.offsetWidth))}px`; tip.style.top = `${Math.max(0, y - tip.offsetHeight - 10)}px`;
+        };
+        root.addEventListener('pointermove', show); root.addEventListener('pointerdown', show);
+        root.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
         mount.replaceChildren(root);
     }
 

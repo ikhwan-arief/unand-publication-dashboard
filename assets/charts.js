@@ -66,6 +66,9 @@ function chart(p, type, data, options = {}) {
     }
     const canvas = el('canvas', { role: 'img', 'aria-label': p.title });
     p.body.append(canvas);
+    // Line and bar charts show the tooltip for the nearest year column, so values appear without hitting a point exactly.
+    if ((type === 'line' || type === 'bar') && !options.interaction)
+        options = { ...options, interaction: { mode: 'nearest', axis: options.indexAxis === 'y' ? 'y' : 'x', intersect: false } };
     const plugins=options.plugins||{},tooltip=plugins.tooltip||{};
     options={...options,plugins:{...plugins,legend:{display:false,...plugins.legend},tooltip:{backgroundColor:'#183D34',padding:11,cornerRadius:8,...tooltip,callbacks:{footer:()=>p.title.startsWith('Riwayat')?['Filter default masing-masing snapshot']:[...(document.querySelector('.scope-line span')?.textContent?.split(' · ')||[]),document.querySelector('.scope-line strong')?.textContent||''],...tooltip.callbacks}}}};
     const c = new Chart(canvas, { type, data, options: { responsive: true, maintainAspectRatio: false,

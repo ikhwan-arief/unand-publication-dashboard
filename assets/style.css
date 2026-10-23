@@ -189,22 +189,16 @@ th[aria-sort="descending"] .sort-button::after {
   font-size:28px;
   color:var(--forest)
 }
-.journal-embed {
-  margin-top:10px;
-  font-size:13px
+.citation-year-table {
+  margin-top:10px
 }
-.journal-embed summary {
-  color:var(--green);
-  cursor:pointer;
-  font-weight:600
-}
-.journal-embed pre {
-  white-space:pre-wrap;
-  overflow-wrap:anywhere;
-  background:#f1f4ef;
-  border-radius:8px;
-  padding:10px 12px;
+.citation-year-table th,.citation-year-table td {
+  padding:6px 8px;
   font-size:12px
+}
+.citation-year-table tbody th[scope="row"] {
+  text-align:left;
+  color:var(--muted, #63736b)
 }
 #filters-form select:disabled {
   opacity:.6;

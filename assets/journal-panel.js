@@ -205,15 +205,6 @@ export function renderJournalHeader(container, dataset, journal, onBack) {
     back.onclick = onBack;
     header.append(back, el('h2', { id: 'journal-page-title' }, journal.name),
         el('p', { class: 'panel-note' }, `${journal.issn.length ? 'ISSN ' + journal.issn.join(', ') + ' · ' : ''}Halaman khusus jurnal: KPI, metrik, grafik, dan daftar artikel hanya memuat karya yang terbit pada jurnal ini (seluruh afiliasi dan korpus terkumpul). Data diperbarui: ${updated(dataset.updated_at)} WIB.`));
-    // Embed instructions for any OJS theme: one script (site-wide) and one placeholder on a static page.
-    const script = new URL('assets/widget.js', location.href.split('#')[0]).href, embed = el('details', { class: 'journal-embed' });
-    embed.append(el('summary', {}, 'Pasang metrik ini sebagai halaman di OJS'),
-        el('p', {}, '1. Tambahkan skrip berikut sekali, misalnya lewat plugin Custom Header (bagian footer) di OJS:'),
-        el('pre', {}, el('code', {}, `<script src="${script}" defer></script>`)),
-        el('p', {}, '2. Buat halaman lewat Static Pages, lalu tulis penanda ini sebagai isi halaman:'),
-        el('pre', {}, el('code', {}, `[unand-metrics ${journal.id}]`)),
-        el('p', {}, 'Widget mengikuti font, warna, dan bahasa antarmuka OJS (Indonesia atau Inggris), tanpa navigasi dashboard, dan hanya memuat dua berkas kecil (sekitar 10 KB terkompresi). Kunci bahasa dengan menambahkan en atau id, misalnya [unand-metrics ' + journal.id + ' en]. Panduan lengkap: docs/WIDGET.md di repositori sumber.'));
-    header.append(embed);
     container.append(header);
     return header;
 }
@@ -238,6 +229,11 @@ export function renderJournalCitations(container, dataset, journal, filter, onYe
     const selectable = new Set(dataset.years);
     bar(p, history.by_year.map(r => ({ id: String(r.year), name: `${r.year}${r.partial ? '*' : ''}`, count: r.citations, year: r.year })),
         { horizontal: false, limit: history.by_year.length, unit: 'sitasi', color: PALETTE[0], onClick: r => selectable.has(r.year) && onYear(r.year) });
+    // Visible table of the plotted values, years across, under the chart.
+    const tableWrap = el('div', { class: 'table-scroll citation-year-table' }), table = el('table', { 'aria-label': 'Sitasi per tahun' }), years = el('tr'), counts = el('tr');
+    years.append(el('th', { scope: 'row' }, 'Tahun')); counts.append(el('th', { scope: 'row' }, 'Sitasi'));
+    for (const r of history.by_year) { years.append(el('th', { scope: 'col', class: 'num' }, `${r.year}${r.partial ? '*' : ''}`)); counts.append(el('td', { class: 'num', 'data-citation-year': r.year }, count(r.citations))); }
+    const tbody = el('tbody'); tbody.append(years, counts); table.append(tbody); tableWrap.append(table); p.node.append(tableWrap);
     if (!window) return;
     const span = `${window.from}–${window.to}`, totals = el('dl', { class: 'journal-counts journal-citation-totals' });
     totals.append(el('dt', {}, `Total sitasi ${span}`), el('dd', { 'data-citation-total': 'all' }, count(window.citations)),
