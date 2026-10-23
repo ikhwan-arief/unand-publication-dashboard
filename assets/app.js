@@ -1,4 +1,5 @@
-import { MODULES, SDGS, csvCell } from './metrics.js';
+import { MODULES, SDGS, csvCell, journalMetricDrill, journalWindow } from './metrics.js';
+import { renderJournalPanel, JOURNAL_TITLES } from './journal-panel.js';
 import { EXPORT_CONTROLS, SHOW_AUDIT_TAB, CONTENT_PROTECTION } from './config.js';
 import { el, panel, bar, line, donut, stacked, scatter, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE } from './charts.js';
 const $ = id => document.getElementById(id), nf = new Intl.NumberFormat('id-ID'), df = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
@@ -16,6 +17,7 @@ const descriptions = { overview: 'Keluaran penelitian, dampak, dan jejaring Univ
 let manifest, history = [], currentModule = 'overview', filter = {}, data, worker, requestID = 0, renderID = 0, tablePage = 0, tableSort = 'citations';
 let topicGroup = '', topicSubfield = '';
 let geographyPromise;
+let journalDataset, journalDatasetPromise;
 const pending = new Map(), overviewCache = new Map();
 const defaultScope = module => module === 'journals' ? 'published' : module === 'funding' ? 'funded' : 'affiliated';
 const icons = ['◈', '▤', '♙', '↗', '⌘', '▦', '◎', '◉', '◇', '▥', '▱', '◌'];
@@ -33,12 +35,14 @@ catch {
 function external(label, url) { const safe = safeURL(url); return safe ? el('a', { href: safe, target: '_blank', rel: 'noopener noreferrer' }, label) : el('span', {}, label); }
 function setHash(module, next = filter) { const p = new URLSearchParams(); for (const [k, v] of Object.entries(next))
     if (v !== '' && v !== null && v !== undefined)
-        p.set(k, v); location.hash = module + (p.size ? '?' + p : ''); }
+        p.set(k, v); const hash = module + (p.size ? '?' + p : '');
+    if (location.hash.slice(1) !== hash) $('content').setAttribute('aria-busy', 'true');
+    location.hash = hash; }
 function drill(patch) { setHash('publications', { ...filter, ...patch }); }
 function readRoute() {
     const [route, query = ''] = location.hash.slice(1).split('?');
     currentModule = MODULES.some(([id]) => id === route) && (route !== 'audit' || SHOW_AUDIT_TAB) ? route : 'overview';
-    const allowed = new Set(['from', 'to', 'scope', 'corpus', 'type', 'language', 'license', 'version', 'locationType', 'local', 'field', 'topic', 'oa', 'author', 'partner', 'country', 'funder', 'award', 'source', 'sdg', 'design', 'bin', 'audit', 'metric', 'dateQuality', 'fwciQuality', 'q']);
+    const allowed = new Set(['from', 'to', 'scope', 'corpus', 'type', 'language', 'license', 'version', 'locationType', 'local', 'field', 'topic', 'oa', 'author', 'partner', 'country', 'funder', 'award', 'source', 'sdg', 'design', 'bin', 'audit', 'metric', 'dateQuality', 'fwciQuality', 'q', 'journalSource', 'journalYear', 'journalMetric', 'journalPart']);
     filter = { ...manifest.default_filter, scope: defaultScope(currentModule) };
     for (const [k, v] of new URLSearchParams(query))
         if (allowed.has(k))
@@ -60,7 +64,7 @@ function task(action, options = {}) {
     }
     return new Promise((resolve, reject) => { const id = ++requestID; pending.set(id, { resolve, reject }); worker.postMessage({ id, action, filter: { ...filter }, options, manifest, history }); });
 }
-function isDefault() { const baseline = { ...manifest.default_filter, scope: filter.scope }; return Object.entries(filter).every(([k, v]) => !v || String(v) === String(baseline[k] ?? '')) && ['from', 'to', 'scope', 'corpus'].every(k => String(filter[k]) === String(baseline[k])); }
+function isDefault() { const baseline = { ...manifest.default_filter, scope: filter.scope }; return Object.entries(filter).filter(([k]) => !['journalSource', 'journalYear'].includes(k)).every(([k, v]) => !v || String(v) === String(baseline[k] ?? '')) && ['from', 'to', 'scope', 'corpus'].every(k => String(filter[k]) === String(baseline[k])); }
 async function getSummary() { if (isDefault()) {
     const scope = filter.scope;
     if (!overviewCache.has(scope))
@@ -68,6 +72,16 @@ async function getSummary() { if (isDefault()) {
     return overviewCache.get(scope);
 } return task('summary'); }
 function option(select, value, label) { select.append(el('option', { value }, label)); }
+async function getJournalDataset() {
+    if (!manifest.files.journal_metrics) return null;
+    if (!journalDatasetPromise) journalDatasetPromise = getJSON(manifest.files.journal_metrics.path).then(result => {
+        if (result.schema_version !== 1 || result.updated_at !== manifest.updated_at || result.policy?.version !== 1 ||
+            !Array.isArray(result.journals) || !Array.isArray(result.years)) throw new Error('Dataset metrik jurnal tidak sesuai snapshot.');
+        return result;
+    }).catch(error => { journalDatasetPromise = undefined; throw error; });
+    return journalDatasetPromise;
+}
+function selectJournal(source, year) { setHash('journals', { ...filter, journalSource: source, journalYear: year }); }
 function periodLabel() {
     if (!filter.from && !filter.to) return 'Semua tahun';
     if (!filter.from) return `Sampai ${filter.to}`;
@@ -75,7 +89,7 @@ function periodLabel() {
     return `${filter.from}–${filter.to}`;
 }
 function syncFilters() {
-    const lastYear = Number(manifest.default_filter.to);
+    const lastYear = Math.max(Number(manifest.default_filter.to), filter.journalMetric ? Number(filter.to) : 0);
     const availableYears = [...manifest.dataset_years, lastYear, filter.from, filter.to]
         .map(Number).filter(year => Number.isInteger(year) && year >= 1500 && year <= lastYear);
     const firstYear = Math.min(...availableYears);
@@ -182,7 +196,8 @@ function pubTable(container, rows = data.publications, total = data.total, { can
         section.append(toolbar);
     }
     const tableWrap = el('div', { class: 'table-scroll' }), table = el('table'), thead = el('thead'), tr = el('tr');
-    for (const [text, cls] of [['Publikasi', ''], ['Tahun', 'num'], ['Sitasi', 'num'], ['Akses', '']])
+    const columns = [['Publikasi', ''], ['Tahun', 'num'], ...(filter.journalMetric ? [[filter.journalMetric === 'fwci' ? 'FWCI karya' : 'Sitasi dalam jendela', 'num']] : []), ['Sitasi kumulatif', 'num'], ['Akses', '']];
+    for (const [text, cls] of columns)
         tr.append(el('th', { scope: 'col', class: cls }, text));
     thead.append(tr);
     table.append(thead);
@@ -193,7 +208,7 @@ function pubTable(container, rows = data.publications, total = data.total, { can
     function renderRows(items) {
         tbody.replaceChildren();
         for (const row of items) {
-            const tr = el('tr'), title = el('td'), button = el('button', { class: 'work-title', type: 'button' }, row.title);
+            const tr = el('tr'), title = el('td'), button = el('button', { class: 'work-title', type: 'button', 'data-work-id': row.id }, row.title);
             button.onclick = () => openWork(row.id);
             title.append(button);
             if (row.source_name)
@@ -202,11 +217,13 @@ function pubTable(container, rows = data.publications, total = data.total, { can
                 title.append(el('span', { class: 'warning-tag' }, 'Flag retraksi · perlu telaah konteks'));
             const access = el('td');
             access.append(el('span', { class: `oa-tag ${row.oa_status === 'closed' ? 'closed' : ''}` }, row.oa_status || 'Kandidat audit'));
-            tr.append(title, el('td', { class: 'num' }, row.year || '—'), el('td', { class: 'num' }, row.citations === undefined ? '—' : num(row.citations)), access);
+            tr.append(title, el('td', { class: 'num' }, row.year || '—'));
+            if (filter.journalMetric) tr.append(el('td', { class: 'num journal-contribution' }, filter.journalMetric === 'fwci' ? decimal(row.journal_citations) : num(row.journal_citations)));
+            tr.append(el('td', { class: 'num' }, row.citations === undefined ? '—' : num(row.citations)), access);
             tbody.append(tr);
         }
         if (!items.length) {
-            const td = el('td', { colspan: '4' }, 'Tidak ada publikasi pada filter ini.');
+            const td = el('td', { colspan: columns.length }, 'Tidak ada publikasi pada filter ini.');
             const row = el('tr');
             row.append(td);
             tbody.append(row);
@@ -358,6 +375,21 @@ function render() {
     if (filter.scope !== 'affiliated')
         intro(content, filter.scope === 'funded' ? 'Cakupan ini berisi karya yang mencantumkan Unand sebagai pendana. Afiliasi penulis dapat berasal dari institusi lain.' : 'Cakupan ini berisi karya terbitan sumber di bawah penerbit Unand, termasuk artikel penulis dari luar Unand.');
     kpis(content);
+    if (currentModule === 'journals') renderJournalPanel(content, journalDataset, filter, selectJournal, next => setHash('publications', next));
+    if (currentModule === 'publications' && filter.journalMetric) {
+        const journal = journalDataset.journals.find(j => j.id === filter.journalSource);
+        const row = journal.series[filter.journalMetric].find(r => r.year === Number(filter.journalYear));
+        const context = el('section', { class: 'panel journal-drill-context' });
+        context.append(el('h2', {}, `${JOURNAL_TITLES[filter.journalMetric]} · ${row.year} · ${journal.name}`),
+            el('p', {}, filter.journalMetric === 'fwci'
+                ? `${num(row.denominator)} karya dengan FWCI valid dari ${num(row.total_documents)} karya terbitan ${row.year}. Jumlah skor FWCI ${decimal(row.numerator)} ÷ ${num(row.denominator)} karya bermetrik = ${decimal(row.value)}.`
+                : `${filter.journalPart === 'numerator' ? 'Dokumen sasaran pembilang, termasuk dokumen dengan nol sitasi' : 'Dokumen penyebut'}. ${num(row.numerator)} sitasi ÷ ${num(row.denominator)} dokumen. Periode publikasi ${row.publication_from}–${row.publication_to}; sitasi ${row.citation_from}–${row.citation_to}.`),
+            el('p', {}, `Kolom ${filter.journalMetric === 'fwci' ? 'FWCI karya menampilkan skor pembentuk rerata' : 'Sitasi dalam jendela menunjukkan kontribusi setiap karya'}. Sitasi kumulatif dan kartu indikator umum memakai seluruh sitasi per snapshot. Pencarian hanya mempersempit daftar dokumen; tidak menghitung ulang nilai jurnal. Menerapkan Jelajahi data mengakhiri rincian metrik ini.`));
+        if (filter.journalMetric === 'fwci') fwciHelp(context);
+        const back = el('button', { class: 'button secondary', type: 'button' }, 'Kembali ke metrik jurnal');
+        back.onclick = () => setHash('journals', { ...manifest.default_filter, scope: 'published', journalSource: journal.id, journalYear: row.year });
+        context.append(back); content.append(context);
+    }
     selectors(content);
     const grid = el('div', { class: 'charts-grid' });
     content.append(grid);
@@ -822,6 +854,21 @@ async function route() {
     if (!isDefault())
         note('Mengolah snapshot untuk filter terpilih. Rincian dimuat hanya saat diperlukan.');
     try {
+        if (currentModule === 'journals' || currentModule === 'publications' && filter.journalMetric) {
+            journalDataset = await getJournalDataset();
+            if (thisRender !== renderID) return;
+        }
+        if (currentModule === 'publications' && filter.journalMetric) {
+            if (!journalDataset || !['four_year', 'two_year', 'fwci'].includes(filter.journalMetric) ||
+                !['numerator', 'denominator'].includes(filter.journalPart) ||
+                !journalDataset.journals.some(j => j.id === filter.journalSource) || !journalDataset.years.includes(Number(filter.journalYear)))
+                throw new Error('Konteks metrik jurnal tidak valid. Kembali ke tab Jurnal Unand.');
+            const window = journalWindow(filter.journalMetric, Number(filter.journalYear));
+            filter = { ...journalMetricDrill(filter.journalSource, Number(filter.journalYear), filter.journalMetric, filter.journalPart),
+                from: window.publication_from, to: window.publication_to, q: filter.q || '' };
+        } else {
+            delete filter.journalMetric; delete filter.journalPart;
+        }
         const result = await getSummary();
         if (thisRender !== renderID)
             return;
@@ -884,7 +931,7 @@ async function init() {
         if (filter[k])
             next[k] = filter[k]; setHash(id, next); }; $('navigation').append(a); });
     $('filters-form').onsubmit = e => { e.preventDefault(); if (!manifest)
-        return; const next = { ...filter }; for (const [k, v] of new FormData(e.currentTarget))
+        return; const next = { ...filter }; delete next.journalMetric; delete next.journalPart; for (const [k, v] of new FormData(e.currentTarget))
         next[k] = v; setHash(currentModule, next); };
     $('reset').onclick = () => {
         topicGroup = '';

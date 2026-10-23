@@ -23,6 +23,178 @@
 * {
   box-sizing:border-box
 }
+.journal-metrics {
+  margin:24px 0 30px;
+  min-width:0
+}
+.journal-metrics>h2 {
+  font-family:Georgia,serif;
+  font-size:24px;
+  color:var(--forest)
+}
+.journal-toolbar {
+  display:grid;
+  grid-template-columns:minmax(0,2fr) minmax(0,1fr);
+  gap:16px;
+  margin:18px 0
+}
+.journal-toolbar label {
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  min-width:0;
+  font-weight:600
+}
+.journal-source-field {
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  gap:7px
+}
+.journal-combobox {
+  display:flex;
+  position:relative;
+  min-width:0
+}
+.journal-combobox input {
+  min-width:0;
+  width:100%;
+  padding:11px;
+  border:1px solid var(--border);
+  border-radius:9px 0 0 9px;
+  background:var(--white);
+  color:var(--ink)
+}
+.journal-picker-toggle {
+  border:1px solid var(--border);
+  border-left:0;
+  border-radius:0 9px 9px 0;
+  background:var(--white);
+  color:var(--forest);
+  padding:0 14px
+}
+.journal-options {
+  position:absolute;
+  top:calc(100% + 5px);
+  left:0;
+  right:0;
+  max-height:280px;
+  overflow-y:auto;
+  z-index:20;
+  border:1px solid var(--border);
+  border-radius:9px;
+  box-shadow:0 8px 24px #183d3420;
+  background:var(--white)
+}
+.journal-options [role="option"],.journal-no-results {
+  padding:10px 12px;
+  overflow-wrap:anywhere
+}
+.journal-options [role="option"] {
+  cursor:pointer
+}
+.journal-options [role="option"]:hover,.journal-options [aria-selected="true"] {
+  background:#e8f0e9;
+  color:var(--forest)
+}
+.journal-search-status {
+  position:absolute;
+  width:1px;
+  height:1px;
+  overflow:hidden;
+  clip-path:inset(50%)
+}
+.journal-fwci {
+  margin:0 0 20px
+}
+.journal-fwci h3 {
+  font-family:Georgia,serif;
+  font-size:22px;
+  color:var(--forest)
+}
+.journal-toolbar select {
+  width:100%;
+  min-width:0;
+  padding:11px;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:var(--white);
+  color:var(--ink)
+}
+.journal-ratio-grid {
+  display:grid;
+  align-items:start;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:20px;
+  margin:18px 0
+}
+.journal-ratio,.journal-timelines>.panel,.journal-drill-context {
+  min-width:0;
+  overflow-wrap:anywhere
+}
+.journal-ratio h3 {
+  margin:0;
+  font-family:Georgia,serif;
+  font-size:22px;
+  color:var(--forest)
+}
+.journal-ratio-value {
+  font-size:40px;
+  font-weight:650;
+  color:var(--green);
+  margin:15px 0 0
+}
+.journal-status,.journal-small-base {
+  font-size:12px
+}
+.journal-small-base {
+  color:#80591c
+}
+.journal-counts {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px 15px;
+  border-block:1px solid var(--border);
+  padding:16px 0
+}
+.journal-counts dd {
+  margin:0;
+  font-weight:700;
+  text-align:right
+}
+.journal-formula,.journal-breakdown {
+  margin-top:14px;
+  border-top:1px solid var(--border);
+  padding-top:12px
+}
+.journal-formula summary,.journal-breakdown summary {
+  color:var(--green);
+  cursor:pointer;
+  font-weight:600
+}
+.journal-formula a {
+  display:block;
+  margin:10px 0
+}
+.journal-equation {
+  font-family:Georgia,serif;
+  font-size:16px
+}
+.journal-drill-actions {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:12px;
+  margin:15px 0
+}
+.journal-drill-context {
+  margin:20px 0
+}
+@media(max-width:800px) {
+  .journal-ratio-grid,.journal-toolbar {
+    grid-template-columns:minmax(0,1fr)
+  }
+}
 html[data-export-controls="hidden"] .heading-actions,
 html[data-export-controls="hidden"] .chart-export {
   display:none!important

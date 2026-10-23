@@ -90,7 +90,7 @@ export function bar(p, rows, { horizontal = true, onClick, color, limit = 10, va
             e.native.target.style.cursor = elements.length && onClick ? 'pointer' : 'default'; } });
     accessible(p, rows.map(r => ({ ...r, count: r[value], description: `${r.name}: ${decimal.format(r[value] ?? 0)} ${unit}` })), onClick);
 }
-export function line(p, rows, { onClick, value = 'count', label = 'Publikasi', color = PALETTE[0], percent = false, unit='karya', reference = null, referenceLabel, tooltip } = {}) {
+export function line(p, rows, { onClick, value = 'count', label = 'Publikasi', color = PALETTE[0], percent = false, unit='karya', reference = null, referenceLabel, tooltip, footer } = {}) {
     if (!rows.length || !rows.some(r => Number.isFinite(r[value]))) {
         empty(p);
         return;
@@ -102,6 +102,7 @@ export function line(p, rows, { onClick, value = 'count', label = 'Publikasi', c
     chart(p, 'line', { labels: rows.map(r => r.name ?? r.year ?? r.id), datasets }, {
         plugins: { legend: { display: Number.isFinite(reference), position: 'bottom' }, tooltip: { callbacks: {
             label: c => c.datasetIndex === 0 && tooltip ? tooltip(rows[c.dataIndex]) : `${c.dataset.label}: ${decimal.format(c.raw)} ${percent ? '%' : unit}`,
+            ...(footer ? { footer: () => footer } : {}),
         } } },
         onClick: (_e, e) => e[0]?.datasetIndex === 0 && onClick?.(rows[e[0].index]), scales: { x: { grid: { display: false }, ticks: { font: { size: 10 }, maxTicksLimit: 12 } }, y: { beginAtZero: true, max: percent ? 100 : undefined, grid: { color: '#edf0e9' }, ticks: { font: { size: 9 } } } } });
     accessible(p, rows.map(r => ({ ...r, name: String(r.name ?? r.year ?? r.id), count: r[value], description: tooltip ? tooltip(r) : `${r.name??r.year??r.id}: ${Number.isFinite(r[value]) ? decimal.format(r[value]) + ' ' + (percent?'%':unit) : 'Tidak tersedia'}` })), onClick);

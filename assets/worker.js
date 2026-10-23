@@ -1,4 +1,4 @@
-import { summarize, publicationPage, entityPage, filteredWorks } from './metrics.js';
+import { summarize, publicationPage, entityPage, filteredWorks, journalWindow } from './metrics.js';
 let works = [], entities = {}, manifest, history = [], loadedKey = '';
 async function getJSON(url) {
     const response = await fetch(url);
@@ -15,7 +15,12 @@ async function handle({ data }) {
             entities = await getJSON(new URL('../data/entities.json', import.meta.url));
         }
         // Read years that are actually needed. Additional scopes share deduplicated records.
-        const files = manifest.files.works.filter(f => !filter.from && !filter.to ||
+        const metricYear = Number(filter.journalYear);
+        const metricWindow = filter.journalMetric ? journalWindow(filter.journalMetric, metricYear) : null;
+        const snapshotYear = Number(new Intl.DateTimeFormat('en', { timeZone: 'Asia/Jakarta', year: 'numeric' }).format(new Date(manifest.updated_at)));
+        const files = manifest.files.works.filter(f => filter.journalMetric
+            ? Number(f.year) >= metricWindow.publication_from && Number(f.year) <= metricWindow.publication_to
+            : !filter.from && !filter.to ||
             Number(f.year) >= Number(filter.from || 0) && Number(f.year) <= Number(filter.to || 9999));
         const key = files.map(f => f.path).join('|');
         if (key !== loadedKey) {
@@ -31,7 +36,7 @@ async function handle({ data }) {
         if (action === 'summary')
             result = summarize(works, entities, filter, manifest, history);
         else if (action === 'page')
-            result = publicationPage(works, entities, filter, options);
+            result = publicationPage(works, entities, filter, { ...options, snapshotYear });
         else if (action === 'entities')
             result = entityPage(works, entities, filter, manifest, options);
         else if (action === 'detail') {
@@ -41,7 +46,7 @@ async function handle({ data }) {
                 funding: w.funders.map(id => entities.funders[id]), award_details: w.awards.map(id => entities.awards[id]) } : null;
         }
         else if (action === 'export')
-            result = filteredWorks(works, filter, entities).map(w => options.format==='json'?{
+            result = filteredWorks(works, filter, entities, snapshotYear).map(w => options.format==='json'?{
                 ...w,author_details:w.authors.map(a=>({...a,...entities.authors[a.id]})),
                 source_details:entities.sources[w.source],funder_details:w.funders.map(id=>entities.funders[id]),
                 topic_details:w.topics.map(id=>entities.topics[id]),
