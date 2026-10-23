@@ -212,7 +212,7 @@ export function renderJournalHeader(container, dataset, journal, onBack) {
         el('pre', {}, el('code', {}, `<script src="${script}" defer></script>`)),
         el('p', {}, '2. Buat halaman lewat Static Pages, lalu tulis penanda ini sebagai isi halaman:'),
         el('pre', {}, el('code', {}, `[unand-metrics ${journal.id}]`)),
-        el('p', {}, 'Widget mengikuti font dan warna tema jurnal, tanpa navigasi dashboard, dan hanya memuat dua berkas kecil (sekitar 10 KB terkompresi). Panduan lengkap: docs/WIDGET.md di repositori sumber.'));
+        el('p', {}, 'Widget mengikuti font, warna, dan bahasa antarmuka OJS (Indonesia atau Inggris), tanpa navigasi dashboard, dan hanya memuat dua berkas kecil (sekitar 10 KB terkompresi). Kunci bahasa dengan menambahkan en atau id, misalnya [unand-metrics ' + journal.id + ' en]. Panduan lengkap: docs/WIDGET.md di repositori sumber.'));
     header.append(embed);
     container.append(header);
     return header;
