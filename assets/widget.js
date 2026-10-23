@@ -163,14 +163,27 @@
         mount.replaceChildren(root);
     }
 
-    // Accent: explicit data-accent, else the theme's link colour, else a neutral green.
+    // Accent: explicit data-accent, else a theme link colour that stays readable on the widget's background.
+    const rgb = value => (value.match(/[\d.]+/g) || []).map(Number);
+    const luminance = ([r, g, b]) => [r, g, b].map(v => (v /= 255) <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((n, v, i) => n + v * [.2126, .7152, .0722][i], 0);
+    const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((m, n) => n - m); return (x + .05) / (y + .05); };
+    function background(node) {
+        for (let n = node; n && n.nodeType === 1; n = n.parentElement) { const c = rgb(getComputedStyle(n).backgroundColor); if (c.length >= 3 && (c[3] ?? 1) > .5) return c; }
+        return [255, 255, 255];
+    }
     function accent(mount) {
         const explicit = mount.getAttribute('data-accent');
         if (explicit && /^#?[0-9a-f]{3,8}$/i.test(explicit)) return explicit.startsWith('#') ? explicit : '#' + explicit;
-        // Prefer a link in the content column (e.g. OJS breadcrumbs); header/nav links are often white on a colour bar.
-        const content = mount.closest('.pkp_structure_main, main, article, .page');
-        const link = content?.querySelector('a[href]:not(.uam a)') || [...document.querySelectorAll('a[href]')].find(a => !a.closest('header, nav, .uam, .pkp_structure_head'));
-        return link ? getComputedStyle(link).color : '#1f6f5c';
+        // Content links first (e.g. breadcrumbs), then the sidebar, then any link outside header/navigation bars.
+        const bg = background(mount), content = mount.closest('.pkp_structure_main, main, article, .page');
+        const candidates = [...(content ? content.querySelectorAll('a[href]') : []), ...document.querySelectorAll('.pkp_structure_sidebar a[href], aside a[href], #sidebar a[href]'),
+            ...[...document.querySelectorAll('a[href]')].filter(a => !a.closest('header, nav, .pkp_structure_head, .pkp_navigation_primary_wrapper'))];
+        for (const link of candidates) {
+            if (link.closest('.uam')) continue;
+            const color = getComputedStyle(link).color, c = rgb(color);
+            if (c.length >= 3 && (c[3] ?? 1) > .5 && contrast(c, bg) >= 3) return color;
+        }
+        return contrast([31, 111, 92], bg) >= 3 ? '#1f6f5c' : 'currentColor';
     }
     async function mountWidget(mount) {
         // IDs are accepted in any case and with surrounding spaces, e.g. "s4210184296".
