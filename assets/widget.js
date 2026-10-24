@@ -28,7 +28,7 @@
             kpis: [['Publikasi', 'Karya unik'], ['Sitasi kumulatif', 'Per tanggal snapshot'], ['Open access', 'Dapat dibaca terbuka'], ['Kolaborasi internasional', 'Lebih dari satu negara'], ['Rerata FWCI', (n, c) => `${n} karya · ${c}`], ['Karya top 10 persen', n => `Dari ${n} karya bermetrik`]],
             impact: 'Dampak sitasi jurnal', types: 'Jenis karya menurut tahun', access: 'Komposisi akses per tahun', accessNote: 'Persentase karya per status OA',
             countries: 'Negara afiliasi kontributor', countriesNote: 'Satu karya dapat masuk beberapa negara', origin: 'Asal afiliasi penulis', originNote: 'Karya dengan sedikitnya satu penulis Unand dibanding tanpa afiliasi Unand',
-            unand: 'Ada afiliasi Unand', external: 'Tanpa afiliasi Unand', articles: 'Artikel paling banyak disitasi', columns: ['Judul', 'Tahun', 'Sitasi', 'Akses', 'SDG'],
+            unand: 'Ada afiliasi Unand', external: 'Tanpa afiliasi Unand', articles: 'Artikel paling banyak disitasi', columns: ['Judul', 'Tahun', 'Sitasi', 'SDG'],
             sdgCard: 'SDG karya jurnal', sdgIcons: 'Ikon SDG: Perserikatan Bangsa-Bangsa,', sdgNote: 'Karya unik per tujuan; satu karya dapat masuk beberapa tujuan. Klasifikasi otomatis OpenAlex, bukan ukuran dampak.', score: 'skor keyakinan', noSdg: 'Belum ada label SDG pada karya jurnal ini.', country: 'Negara', moreGoals: n => `${n} tujuan lain tercantum di tabel angka.`, mapLoading: 'Memuat peta…', noCountries: 'Belum ada negara afiliasi pada karya jurnal ini.',
             mapMissing: list => `Tanpa koordinat peta: ${list}.`, mapNote: 'Ukuran bubble sebanding dengan jumlah karya; arahkan kursor atau ketuk untuk melihat angka',
             sdgNames: ['Tanpa Kemiskinan', 'Tanpa Kelaparan', 'Kehidupan Sehat dan Sejahtera', 'Pendidikan Berkualitas', 'Kesetaraan Gender', 'Air Bersih dan Sanitasi Layak', 'Energi Bersih dan Terjangkau', 'Pekerjaan Layak dan Pertumbuhan Ekonomi', 'Industri, Inovasi dan Infrastruktur', 'Berkurangnya Kesenjangan', 'Kota dan Permukiman yang Berkelanjutan', 'Konsumsi dan Produksi yang Bertanggung Jawab', 'Penanganan Perubahan Iklim', 'Ekosistem Lautan', 'Ekosistem Daratan', 'Perdamaian, Keadilan dan Kelembagaan yang Tangguh', 'Kemitraan untuk Mencapai Tujuan'],
@@ -49,7 +49,7 @@
             kpis: [['Publications', 'Unique works'], ['Cumulative citations', 'As of the snapshot date'], ['Open access', 'Free to read'], ['International collaboration', 'More than one country'], ['Mean FWCI', (n, c) => `${n} works · ${c}`], ['Top 10% works', n => `Of ${n} works with a score`]],
             impact: 'Journal citation impact', types: 'Work types by year', access: 'Access status by year', accessNote: 'Share of works per OA status',
             countries: 'Contributor countries', countriesNote: 'A work can count for several countries', origin: 'Author affiliation', originNote: 'Works with at least one Unand author versus works without a Unand affiliation',
-            unand: 'With Unand affiliation', external: 'Without Unand affiliation', articles: 'Most cited articles', columns: ['Title', 'Year', 'Citations', 'Access', 'SDG'],
+            unand: 'With Unand affiliation', external: 'Without Unand affiliation', articles: 'Most cited articles', columns: ['Title', 'Year', 'Citations', 'SDG'],
             sdgCard: 'SDGs of journal works', sdgIcons: 'SDG icons: United Nations,', sdgNote: 'Unique works per goal; a work can count for several goals. Automatic OpenAlex classification, not a measure of impact.', score: 'classifier confidence', noSdg: 'No SDG labels on this journal\'s works yet.', country: 'Country', moreGoals: n => `${n} more goals are listed in the values table.`, mapLoading: 'Loading map…', noCountries: 'No affiliation countries on this journal\'s works yet.',
             mapMissing: list => `Not on the map: ${list}.`, mapNote: 'Bubble size is proportional to the number of works; hover or tap to see values',
             sdgNames: ['No poverty', 'Zero hunger', 'Good health and well-being', 'Quality education', 'Gender equality', 'Clean water and sanitation', 'Affordable and clean energy', 'Decent work and economic growth', 'Industry, innovation and infrastructure', 'Reduced inequalities', 'Sustainable cities and communities', 'Responsible consumption and production', 'Climate action', 'Life below water', 'Life on land', 'Peace, justice and strong institutions', 'Partnerships for the goals'],
@@ -77,7 +77,7 @@
 .uam table{width:100%;border-collapse:collapse;font-size:.92em}.uam th,.uam td{padding:6px 8px;border-bottom:1px solid rgba(128,128,128,.25);text-align:left;vertical-align:top}
 .uam{position:relative}.uam-tip{position:absolute;z-index:20;pointer-events:none;background:rgba(17,24,39,.92);color:#fff;font-size:.8em;line-height:1.35;padding:5px 8px;border-radius:5px;white-space:nowrap;display:none}
 .uam-years th,.uam-years td{padding:4px 6px;font-size:.85em;text-align:right;white-space:nowrap}.uam-years th:first-child{text-align:left}
-.uam-sdg-list{display:grid;gap:5px;margin:6px 0}.uam-sdg-row{display:grid;grid-template-columns:32px 1fr 3.5em;gap:10px;align-items:center}.uam-sdg-row img{display:block;width:32px;height:32px}.uam-sdg-label{display:grid;gap:3px;min-width:0;font-size:.82em}.uam-sdg-label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.uam-sdg-label b{display:block;height:8px;border-radius:4px;background:rgba(128,128,128,.18)}.uam-sdg-label i{display:block;height:100%;border-radius:4px;min-width:2px}.uam-wide{grid-column:1/-1}.uam-map{aspect-ratio:960/420;min-height:120px}.uam-map svg{height:auto}.uam-sdg{display:inline-block;min-width:1.7em;margin:1px 2px 1px 0;padding:0 5px;border:1px solid var(--uam-accent);border-radius:9px;font-size:.8em;text-align:center;color:var(--uam-accent)}
+.uam-sdg-list{display:grid;gap:5px;margin:6px 0}.uam-sdg-row{display:grid;grid-template-columns:32px 1fr 3.5em;gap:10px;align-items:center}.uam-sdg-row img{display:block;width:32px;height:32px}.uam-sdg-label{display:grid;gap:3px;min-width:0;font-size:.82em}.uam-sdg-label span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.uam-sdg-label b{display:block;height:8px;border-radius:4px;background:rgba(128,128,128,.18)}.uam-sdg-label i{display:block;height:100%;border-radius:4px;min-width:2px}.uam-donut-box{display:flex;justify-content:center;margin:10px 0}.uam svg.uam-donut{width:min(100%,260px)}.uam svg text.uam-donut-value{font-size:24px;font-weight:700;fill:var(--uam-accent)}.uam svg text.uam-donut-label{font-size:13px;opacity:.75}.uam-donut-legend{flex-direction:column;align-items:flex-start;font-size:.9em}.uam-wide{grid-column:1/-1}.uam-map{aspect-ratio:960/420;min-height:120px}.uam-map svg{height:auto}.uam-sdg{display:inline-block;min-width:1.7em;margin:1px 2px 1px 0;padding:0 5px;border:1px solid var(--uam-accent);border-radius:9px;font-size:.8em;text-align:center;color:var(--uam-accent)}
 .uam td.n,.uam th.n{text-align:right;white-space:nowrap}.uam-scroll{overflow-x:auto}.uam details{margin-top:6px;font-size:.85em}.uam summary{cursor:pointer}`;
     // Official SDG colours (UN guidelines) and icons served next to this widget (assets/sdg/sdg-N.png).
     const SDG_COLORS = ['#E5243B', '#DDA63A', '#4C9F38', '#C5192D', '#FF3A21', '#26BDE2', '#FCC30B', '#A21942', '#FD6925', '#DD1367', '#FD9D24', '#BF8B2E', '#3F7E44', '#0A97D9', '#56C02B', '#00689D', '#19486A'];
@@ -284,10 +284,18 @@
             '. The content of this publication has not been approved by the United Nations and does not reflect the views of the United Nations or its officials or Member States.'); return note; };
         grid.append(card(S.sdgCard, S.sdgNote, ...(sdgRows.length ? [sdgList(), sdgRows.length > 8 ? el('p', { class: 'uam-note' }, S.moreGoals(sdgRows.length - 8)) : null, sdgNotice(),
             numbers(['SDG', S.works], sdgRows.map(([name, count]) => [name, num(count)]))] : [el('p', {}, S.noSdg)])));
-        const o = data.origin, total = o.unand + o.external, share = total ? o.unand / total * 100 : 0, bar = svg('svg', { viewBox: `0 0 ${W} 26`, role: 'img', 'aria-label': S.origin });
-        bar.append(svg('rect', { x: 0, y: 4, width: W * share / 100, height: 18, fill: 'var(--uam-accent)' }, `${S.unand}: ${num(o.unand)}${S.worksUnit}`), svg('rect', { x: W * share / 100, y: 4, width: W * (1 - share / 100), height: 18, fill: 'currentColor', 'fill-opacity': .25 }, `${S.external}: ${num(o.external)}${S.worksUnit}`));
-        grid.append(card(S.origin, S.originNote, bar,
-            el('dl', {}, el('dt', {}, S.unand), el('dd', {}, `${num(o.unand)} (${pct(share)})`), el('dt', {}, S.external), el('dd', {}, `${num(o.external)} (${pct(total ? 100 - share : null)})`))));
+        // Author affiliation as a donut that fills its card; the legend carries counts and shares.
+        const o = data.origin, total = o.unand + o.external, share = total ? o.unand / total * 100 : 0, R = 70, C = 2 * Math.PI * R;
+        const donut = svg('svg', { viewBox: '0 0 200 200', role: 'img', 'aria-label': `${S.origin}: ${S.unand} ${pct(share)}`, class: 'uam-donut' });
+        donut.append(svg('circle', { cx: 100, cy: 100, r: R, fill: 'none', stroke: 'currentColor', 'stroke-opacity': .22, 'stroke-width': 34 }, `${S.external}: ${num(o.external)}${S.worksUnit} (${pct(total ? 100 - share : null)})`),
+            svg('circle', { cx: 100, cy: 100, r: R, fill: 'none', stroke: 'var(--uam-accent)', 'stroke-width': 34, 'stroke-dasharray': `${(C * share / 100).toFixed(2)} ${C.toFixed(2)}`, transform: 'rotate(-90 100 100)' }, `${S.unand}: ${num(o.unand)}${S.worksUnit} (${pct(share)})`),
+            Object.assign(svg('text', { x: 100, y: 104, 'text-anchor': 'middle', class: 'uam-donut-value' }), { textContent: pct(share) }),
+            Object.assign(svg('text', { x: 100, y: 128, 'text-anchor': 'middle', class: 'uam-donut-label' }), { textContent: 'Unand' }));
+        const swatch = color => { const box = el('i'); box.style.background = color; return box; };
+        const other = swatch('currentColor'); other.style.opacity = .3;
+        grid.append(card(S.origin, S.originNote, el('div', { class: 'uam-donut-box' }, donut),
+            el('div', { class: 'uam-legend uam-donut-legend' }, el('span', {}, swatch('var(--uam-accent)'), `${S.unand}: ${num(o.unand)} (${pct(share)})`),
+                el('span', {}, other, `${S.external}: ${num(o.external)} (${pct(total ? 100 - share : null)})`))));
         // Contributor countries as a full-width bubble map at the bottom (bubble area ∝ works).
         const mapCard = card(S.countries, S.countriesNote);
         mapCard.classList.add('uam-wide');
@@ -299,7 +307,7 @@
         const sdgCell = goals => el('td', {}, ...(goals || []).map(([n, score]) => el('span', { class: 'uam-sdg', style: `background:${SDG_COLORS[n - 1]};border-color:${SDG_COLORS[n - 1]};color:${sdgInk(SDG_COLORS[n - 1])}`, 'data-tip': `SDG ${n} · ${S.sdgNames[n - 1]}${score === null || score === undefined ? '' : ` · ${S.score} ${df.format(score)}`}` }, String(n))));
         for (const a of data.articles) {
             const url = safeURL(a.doi), title = url ? el('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, a.title) : a.title;
-            body.append(el('tr', {}, el('td', {}, title), el('td', { class: 'n' }, a.year ?? '—'), el('td', { class: 'n' }, num(a.citations)), el('td', {}, a.oa || '—'), sdgCell(a.sdgs)));
+            body.append(el('tr', {}, el('td', {}, title), el('td', { class: 'n' }, a.year ?? '—'), el('td', { class: 'n' }, num(a.citations)), sdgCell(a.sdgs)));
         }
         table.append(el('thead', {}, head), body);
         root.append(el('div', { class: 'uam-scroll' }, table), el('p', { class: 'uam-note' }, S.footer(num(data.articles.length))));
