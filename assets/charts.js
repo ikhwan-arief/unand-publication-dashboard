@@ -2,7 +2,7 @@
  * Licensed under the PolyForm Noncommercial License 1.0.0
  * (https://polyformproject.org/licenses/noncommercial/1.0.0). Commercial use requires prior
  * written permission from the copyright holder. See LICENSE and NOTICE. */
-import {csvCell} from './metrics.js';
+import {csvCell, SDG_COLORS} from './metrics.js';
 export const PALETTE = ['#28745B', '#B8934A', '#368C88', '#587AA5', '#8A7098', '#9BAE96', '#49705F', '#C4AB76', '#7F9DAD', '#B3A6B8'];
 export const OA_COLORS = { diamond: '#28745B', gold: '#B8934A', hybrid: '#587AA5', green: '#7DA286', bronze: '#A57D54', closed: '#ADB5AD', unknown: '#DBDFDA' };
 const instances = [];
@@ -157,7 +157,7 @@ export function smallMultiples(p, allRows, availableYears, onClick, options = {}
             const points = years.map(year => ({ year, count: row.years[year] || 0 }));
             const mini = { node: card, body, actions, title: row.name };
             const c = chart(mini, 'line', { labels: years, datasets: [{ label: row.name, data: points.map(point => point.count),
-                borderColor: PALETTE[0], backgroundColor: '#28745B12', fill: true, tension: 0, pointRadius: 2.5, pointHoverRadius: 5, borderWidth: 2 }] }, {
+                borderColor: options.colorOf?.(row) || PALETTE[0], backgroundColor: (options.colorOf?.(row) || '#28745B') + '12', fill: true, tension: 0, pointRadius: 2.5, pointHoverRadius: 5, borderWidth: 2 }] }, {
                 scales: { x: { grid: { display: false }, ticks: { font: { size: 9 }, maxTicksLimit: 5 } },
                     y: { beginAtZero: true, max: Math.ceil(maximum * 1.1), ticks: { precision: 0, font: { size: 9 } }, grid: { color: '#edf0e9' } } },
                 plugins: { tooltip: { callbacks: { label: ctx => `${row.name}: ${integer.format(ctx.raw)} karya pada ${years[ctx.dataIndex]}` } } },
@@ -267,13 +267,34 @@ export function stacked(p, years, series, { percentage = false, horizontal = fal
         description: `${y.year} · ${s.name}: ${integer.format(y.values[s.id] || 0)} dari ${integer.format(y.total)} karya${percentage ? ' · ' + decimal.format(y.total ? (y.values[s.id] || 0) / y.total * 100 : 0) + '%' : ''}`,
         year: y, series: s }))), onClick ? r => onClick(r.year, r.series) : undefined);
 }
-export function scatter(p, rows, { x = 'count', y = 'citations', xTitle = 'Publikasi', yTitle = 'Sitasi', onClick, bubble = false } = {}) {
+// SDG list with the official full icons (number, title and pictogram; scaled, never cropped) and goal-coloured bars.
+// rows: { id: '1'..'17', name, count }; the order is kept as given.
+export function sdgBars(p, rows, { onClick, limit = 17 } = {}) {
+    const list = rows.slice(0, limit), max = Math.max(1, ...list.map(r => r.count || 0));
+    p.body.style.height = 'auto';
+    if (!list.length || !list.some(r => r.count)) { empty(p); return; }
+    const box = el('ol', { class: 'sdg-bars' });
+    for (const r of list) {
+        const n = Number(r.id), item = el('li'), button = el('button', { type: 'button', class: 'sdg-bar', 'data-sdg': r.id, 'aria-label': `${r.name}: ${integer.format(r.count || 0)} karya` });
+        const icon = el('img', { src: `assets/sdg/sdg-${n}.png`, alt: `SDG ${n}`, width: '40', height: '40', loading: 'lazy' });
+        const track = el('span', { class: 'sdg-bar-track' }), fill = el('span', { class: 'sdg-bar-fill' });
+        fill.style.width = `${(r.count || 0) / max * 100}%`; fill.style.background = SDG_COLORS[n - 1];
+        track.append(fill);
+        const label = el('span', { class: 'sdg-bar-label' });
+        label.append(el('span', { class: 'sdg-bar-name' }, r.name), track);
+        button.append(icon, label, el('span', { class: 'sdg-bar-count' }, integer.format(r.count || 0)));
+        if (onClick) button.onclick = () => onClick(r); else button.disabled = true;
+        item.append(button); box.append(item);
+    }
+    p.body.append(box);
+}
+export function scatter(p, rows, { x = 'count', y = 'citations', xTitle = 'Publikasi', yTitle = 'Sitasi', onClick, bubble = false, colorOf } = {}) {
     rows = rows.filter(r => Number.isFinite(r[x]) && Number.isFinite(r[y]));
     if (!rows.length) {
         empty(p);
         return;
     }
-    chart(p, bubble ? 'bubble' : 'scatter', { datasets: [{ label: p.title, data: rows.map(r => ({ x: r[x], y: r[y], r: Math.max(4, Math.min(20, Math.sqrt(r.count || 1) * 1.3)) })), backgroundColor: rows.map((r, i) => colorFor(r.id, i) + 'B3'), borderWidth: 1, borderColor: '#fff', pointRadius: 5 }] }, { scales: { x: { beginAtZero: true, title: { display: true, text: xTitle, font: { size: 10 } }, grid: { color: '#edf0e9' }, ticks: { font: { size: 9 } } }, y: { beginAtZero: true, title: { display: true, text: yTitle, font: { size: 10 } }, grid: { color: '#edf0e9' }, ticks: { font: { size: 9 } } } },
+    chart(p, bubble ? 'bubble' : 'scatter', { datasets: [{ label: p.title, data: rows.map(r => ({ x: r[x], y: r[y], r: Math.max(4, Math.min(20, Math.sqrt(r.count || 1) * 1.3)) })), backgroundColor: rows.map((r, i) => (colorOf?.(r) || colorFor(r.id, i)) + 'B3'), borderWidth: 1, borderColor: '#fff', pointRadius: 5 }] }, { scales: { x: { beginAtZero: true, title: { display: true, text: xTitle, font: { size: 10 } }, grid: { color: '#edf0e9' }, ticks: { font: { size: 9 } } }, y: { beginAtZero: true, title: { display: true, text: yTitle, font: { size: 10 } }, grid: { color: '#edf0e9' }, ticks: { font: { size: 9 } } } },
         plugins: { legend: { display: false }, tooltip: { backgroundColor: '#183D34', callbacks: { label: ctx => `${rows[ctx.dataIndex].name || rows[ctx.dataIndex].title}: ${xTitle} ${decimal.format(ctx.parsed.x)}, ${yTitle} ${decimal.format(ctx.parsed.y)}` } } },
         onClick: (_e, e) => e[0] && onClick?.(rows[e[0].index]) });
     accessible(p, rows.slice(0, 50).map(r => ({ ...r, description: `${r.name || r.title}: ${xTitle} ${decimal.format(r[x])}; ${yTitle} ${decimal.format(r[y])}` })), onClick);
