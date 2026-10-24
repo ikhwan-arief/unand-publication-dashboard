@@ -1,3 +1,7 @@
+/*! Copyright (c) 2026 Ikhwan Arief (ikhwan[at]eng.unand.ac.id). All rights reserved.
+ * Licensed under the PolyForm Noncommercial License 1.0.0
+ * (https://polyformproject.org/licenses/noncommercial/1.0.0). Commercial use requires prior
+ * written permission from the copyright holder. See LICENSE and NOTICE. */
 :root {
   --forest:#183d34;
   --green:#28745b;
@@ -1733,4 +1737,42 @@ dialog p {
 }
 .detail-grid span,.detail-list {
   overflow-wrap:anywhere
+}
+.author-head-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:8px 32px;
+  margin:12px 0 6px
+}
+.author-head-grid h3 {
+  font-size:12px;
+  letter-spacing:.6px;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin:0 0 4px
+}
+.author-link {
+  background:none;
+  border:0;
+  padding:0;
+  font:inherit;
+  color:var(--green);
+  cursor:pointer;
+  text-decoration:underline;
+  text-underline-offset:2px
+}
+/* Reset semua filter: warna sorot tema agar jalan kembali ke default mudah terlihat. */
+.filters #reset {
+  background:var(--gold);
+  border:1px solid color-mix(in srgb, var(--gold) 80%, #000);
+  color:var(--ink);
+  font-weight:700;
+  box-shadow:0 2px 8px color-mix(in srgb, var(--gold) 45%, transparent)
+}
+.filters #reset:hover {
+  background:color-mix(in srgb, var(--gold) 82%, #fff)
+}
+.filters #reset:focus-visible {
+  outline:3px solid var(--forest);
+  outline-offset:2px
 }

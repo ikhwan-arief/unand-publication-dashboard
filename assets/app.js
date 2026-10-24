@@ -1,5 +1,9 @@
-import { MODULES, SDGS, METRIC_KINDS, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod, workSdgs, citingShard, CITING_FIELDS } from './metrics.js';
-import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderJournalMetrics, renderJournalCitations, renderJournalTable, METRIC_TITLES, metricYear } from './journal-panel.js';
+/*! Copyright (c) 2026 Ikhwan Arief (ikhwan[at]eng.unand.ac.id). All rights reserved.
+ * Licensed under the PolyForm Noncommercial License 1.0.0
+ * (https://polyformproject.org/licenses/noncommercial/1.0.0). Commercial use requires prior
+ * written permission from the copyright holder. See LICENSE and NOTICE. */
+import { MODULES, SDGS, METRIC_KINDS, languageName, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod, workSdgs, citingShard, CITING_FIELDS } from './metrics.js';
+import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderAuthorHeader, renderJournalMetrics, renderJournalCitations, renderJournalTable, METRIC_TITLES, metricYear } from './journal-panel.js';
 import { EXPORT_CONTROLS, SHOW_AUDIT_TAB, CONTENT_PROTECTION } from './config.js';
 import { el, panel, bar, line, donut, stacked, scatter, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE } from './charts.js';
 const $ = id => document.getElementById(id), nf = new Intl.NumberFormat('id-ID'), df = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
@@ -45,9 +49,13 @@ function setHash(module, next = filter) { const p = new URLSearchParams(); for (
     location.hash = hash; }
 const journalPage = () => currentModule === 'journals' && Boolean(filter.journal);
 const currentJournal = () => journalPage() ? journalDataset?.journals.find(j => j.id === filter.journal) : null;
-// Drills stay inside a journal page; on the journals overview a Unand journal opens its own page.
+// Halaman profil penulis (#authors?author=A…): seluruh karya dalam snapshot yang mencantumkan penulis itu.
+const authorPage = () => currentModule === 'authors' && Boolean(filter.author);
+const openAuthor = (author, extra = {}) => setHash('authors', { author, ...extra });
+// Drills stay inside a journal or author page; on the journals overview a Unand journal opens its own page.
 function drill(patch) {
     if (journalPage()) return setHash('journals', { ...filter, ...patch });
+    if (authorPage()) return setHash('authors', { ...filter, ...patch });
     if (currentModule === 'journals' && patch.source && journalDataset?.journals.some(j => j.id === patch.source)) {
         const { source, ...rest } = patch;
         return setHash('journals', { journal: source, ...rest });
@@ -71,6 +79,8 @@ function readRoute() {
     // A journal page has one fixed population: works published by that journal, full corpus.
     if (currentModule === 'journals' && filter.journal) Object.assign(filter, { scope: 'published', corpus: 'all', source: filter.journal });
     else delete filter.journal;
+    // Halaman penulis juga memiliki satu populasi tetap: seluruh karya yang mencantumkan penulis, semua cakupan, seluruh korpus.
+    if (authorPage()) Object.assign(filter, { scope: 'all', corpus: 'all' });
     if (currentModule !== 'publications' && !journalPage()) { delete filter.metricKind; delete filter.metricPart; }
 }
 function task(action, options = {}) {
@@ -132,10 +142,10 @@ function syncFilters() {
     }
     $('active-filters').replaceChildren();
     const labels = { topic: 'Topik', author: 'Penulis', partner: 'Mitra', country: 'Negara', funder: 'Pendana', award: 'Hibah', source: 'Sumber', sdg: 'SDG', design: 'Desain studi', language: 'Bahasa', license: 'Lisensi', version: 'Versi', locationType: 'Lokasi', local: 'Afiliasi Unand', bin: 'Rentang sitasi', audit: 'Audit', metric: 'Indikator', dateQuality: 'Tanggal layak timeline', fwciQuality: 'Kelayakan FWCI', q: 'Pencarian' };
-    $('filter-scope').disabled = $('filter-corpus').disabled = journalPage();
+    $('filter-scope').disabled = $('filter-corpus').disabled = journalPage() || authorPage();
     for (const [key, label] of Object.entries(labels))
-        if (filter[key] !== undefined && filter[key] !== '' && !(key === 'source' && journalPage())) {
-            const chip = el('span', { class: 'chip' }, `${label}: ${filter[key]}`), button = el('button', { type: 'button', 'aria-label': `Hapus filter ${label}` }, '×');
+        if (filter[key] !== undefined && filter[key] !== '' && !(key === 'source' && journalPage()) && !(key === 'author' && authorPage())) {
+            const chip = el('span', { class: 'chip' }, `${label}: ${key === 'language' ? languageName(filter[key]) : filter[key]}`), button = el('button', { type: 'button', 'aria-label': `Hapus filter ${label}` }, '×');
             button.onclick = () => { const next = { ...filter }; delete next[key]; setHash(currentModule, next); };
             chip.append(button);
             $('active-filters').append(chip);
@@ -422,19 +432,25 @@ function render() {
     document.title = title + ' · Universitas Andalas';
     document.querySelectorAll('.nav-link').forEach(a => { const active = a.dataset.module === currentModule; a.classList.toggle('active', active); active ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'); });
     syncFilters();
-    const journal = currentJournal();
+    const journal = currentJournal(), author = authorPage() ? data.author_profile : null;
+    if (author) {
+        $('page-title').textContent = author.name;
+        $('page-description').textContent = 'Profil publikasi dalam dashboard riset Universitas Andalas.';
+        document.title = `${author.name} · Penulis · Universitas Andalas`;
+        renderAuthorHeader(content, author, () => setHash('authors', {}));
+    }
     if (journal) {
         document.title = `${journal.name} · Jurnal Unand · Universitas Andalas`;
         renderJournalHeader(content, journalDataset, journal, () => setHash('journals', { metricYear: filter.metricYear }));
     }
     const scope = el('div', { class: 'scope-line' });
-    scope.append(el('span', {}, `${journal ? journal.name : scopeName[filter.scope]} · ${periodLabel()} · ${corpusName(filter.corpus)}`), el('strong', {}, `${num(data.total)} karya unik`));
+    scope.append(el('span', {}, `${journal ? journal.name : author ? `Karya ${author.name}` : scopeName[filter.scope]} · ${periodLabel()} · ${corpusName(filter.corpus)}`), el('strong', {}, `${num(data.total)} karya unik`));
     content.append(scope);
     if ((!filter.from || Number(filter.from) <= data.current_year) && (!filter.to || Number(filter.to) >= data.current_year))
         intro(content, `Tahun ${data.current_year} belum lengkap. Perbandingan tahun berjalan tidak disamakan dengan satu tahun kalender penuh.`);
-    if (filter.scope === 'all' && !journal)
+    if (filter.scope === 'all' && !journal && !author)
         intro(content, 'Cakupan Seluruhnya menggabungkan karya berafiliasi Unand, didanai Unand, dan terbitan penerbit Unand; setiap karya dihitung sekali. Sebagian karya tidak memiliki penulis Unand, sehingga angka ini bukan ukuran keluaran riset Unand saja.');
-    else if (filter.scope !== 'affiliated' && !journal)
+    else if (filter.scope !== 'affiliated' && !journal && !author)
         intro(content, filter.scope === 'funded' ? 'Cakupan ini berisi karya yang mencantumkan Unand sebagai pendana. Afiliasi penulis dapat berasal dari institusi lain.' : 'Cakupan ini berisi karya terbitan sumber di bawah penerbit Unand, termasuk artikel penulis dari luar Unand.');
     kpis(content);
     if (currentModule === 'journals' && !journal)
@@ -454,7 +470,7 @@ function render() {
                 : setHash('publications', { ...withoutPeriod(filter), ...metricDrill(metric, kind, part) }) });
     }
     if (filter.metricKind) metricContext(content, journal);
-    if (!journal) selectors(content);
+    if (!journal && !author) selectors(content);
     const grid = el('div', { class: 'charts-grid' });
     content.append(grid);
     const k = data.kpis;
@@ -480,11 +496,33 @@ function render() {
         groupBar(grid, 'Bahasa metadata', 'languages', 'language', 'Bahasa judul atau abstrak, belum tentu bahasa teks lengkap.');
         annualFWCITable(content, annual);
     }
+    else if (author) {
+        // Dua per baris; setiap grafik hanya memuat karya penulis ini dan klik mempersempit halaman ini.
+        line(panel(grid, 'Perjalanan publikasi', 'Karya penulis menurut tahun publikasi. Klik tahun untuk mempersempit halaman ini.'), data.top.years, { onClick: drillYear });
+        line(panel(grid, 'Sitasi menurut tahun diterima', 'Sitasi kepada karya penulis pada setiap tahun (counts_by_year OpenAlex); jendela tersedia terbatas.'), data.citation_years.map(([year, count]) => ({ year, count })), { label: 'Sitasi', unit: 'sitasi' });
+        stacked(panel(grid, 'Jenis karya menurut tahun', 'Jenis minor dapat berada di luar enam seri teratas.'), groupedYears('types'), data.top.types.slice(0, 6), { onClick: (y, s) => drill({ from: y.year, to: y.year, type: s.id }) });
+        bar(panel(grid, 'Sebaran sitasi', 'Jumlah karya per rentang sitasi. Klik rentang untuk melihat karyanya.'), data.histogram, { horizontal: false, onClick: r => drill({ bin: r.id }) });
+        groupBar(grid, 'Sumber publikasi teratas', 'sources', 'source');
+        groupBar(grid, 'Bahasa metadata', 'languages', 'language', 'Bahasa judul atau abstrak, belum tentu bahasa teks lengkap.');
+        sdgCard(grid, 'SDG karya penulis');
+        donut(panel(grid, 'Jalur keterbukaan akses', 'Status OA karya penulis pada saat snapshot.'), data.top.oa, r => drill({ oa: r.id === 'unknown' ? '' : r.id }));
+        treemap(panel(grid, 'Bidang penelitian', 'Satu bidang utama per karya; klik bidang untuk mempersempit halaman ini.'), data.top.fields, r => drill({ field: r.id }));
+        groupBar(grid, 'Topik dominan', 'topics', 'topic', 'Satu karya dapat masuk beberapa topik.');
+        groupBar(grid, 'Institusi rekan penulis', 'partners', 'partner', 'Institusi selain Unand pada karya penulis.');
+        const fwciYears = data.annual_fwci.filter(r => r.count > 0);
+        const fwciPanel = panel(grid, 'Rerata FWCI menurut tahun publikasi', 'Rerata skor FWCI valid karya penulis per tahun publikasi; garis putus-putus: acuan global 1. Tahun dengan sedikit karya mudah berfluktuasi.');
+        line(fwciPanel, fwciYears.map(r => ({ year: r.year, value: r.fwci, n: r.fwci_n })), { value: 'value', label: 'Rerata FWCI', unit: 'FWCI', reference: 1, referenceLabel: 'Acuan global FWCI 1', color: PALETTE[3],
+            tooltip: r => `${r.year}: rerata FWCI ${r.value === null ? 'tidak tersedia' : decimal(r.value)} · ${num(r.n)} karya ber-FWCI${r.n < 5 ? ' · basis kecil' : ''}`, onClick: drillYear });
+        fwciHelp(fwciPanel.node);
+        minis(content, [['h-index di sini', num(k.h_index), 'Dalam karya pada halaman ini'], ['Median sitasi', decimal(k.median_citations), 'Per karya'], ['Karya disitasi', pct(k.cited_share), 'Minimal satu sitasi'], ['Cakupan FWCI', pct(k.fwci_coverage), 'Karya dengan FWCI valid']]);
+        collaborationMap(grid, { title: 'Negara kolaborasi', includeHome: true, unit: 'karya',
+            note: 'Negara afiliasi seluruh penulis pada karya ini, termasuk Indonesia. Luas bubble sebanding dengan jumlah karya; satu karya dapat masuk beberapa negara.' });
+    }
     else if (currentModule === 'authors') {
         intro(content, 'Seluruh statistik pada diagram penulis dihitung dari authorship yang pada elemen yang sama berafiliasi Unand. Statistik sepanjang karier ditampilkan terpisah pada rincian.');
-        groupBar(grid, 'Penulis menurut karya berafiliasi Unand', 'authors', 'author');
-        scatter(panel(grid, 'Produktivitas dan sitasi penulis', 'Maksimum 50 penulis paling produktif dalam filter aktif.'), data.top.authors, { onClick: r => drill({ author: r.id }) });
-        smallMultiples(panel(grid, 'Aktivitas penulis lintas tahun', 'Grafik garis untuk 10 penulis teratas menurut karya berafiliasi Unand. Rentang setiap penulis dimulai dan berakhir pada tahun publikasinya dalam rentang grafik terpilih; jeda di antaranya tetap bernilai nol. Skala vertikal seragam, rentang horizontal dapat berbeda. Klik titik untuk menelusuri karya.', true), data.top.authors, years(), (r, y) => drill({ author: r.id, from: y, to: y }), { individual: true });
+        bar(panel(grid, 'Penulis menurut karya berafiliasi Unand', 'Klik nama penulis untuk membuka profilnya.'), data.top.authors, { limit: 10, onClick: r => openAuthor(r.id) });
+        scatter(panel(grid, 'Produktivitas dan sitasi penulis', 'Maksimum 50 penulis paling produktif dalam filter aktif. Klik penulis untuk membuka profilnya.'), data.top.authors, { onClick: r => openAuthor(r.id) });
+        smallMultiples(panel(grid, 'Aktivitas penulis lintas tahun', 'Grafik garis untuk 10 penulis teratas menurut karya berafiliasi Unand. Rentang setiap penulis dimulai dan berakhir pada tahun publikasinya dalam rentang grafik terpilih; jeda di antaranya tetap bernilai nol. Skala vertikal seragam, rentang horizontal dapat berbeda. Klik titik untuk membuka profil penulis pada tahun tersebut.', true), data.top.authors, years(), (r, y) => openAuthor(r.id, { from: y, to: y }), { individual: true });
         minis(content, [['Penulis teramati', num(k.authors), 'Profil berdasarkan publikasi'], ['Memiliki ORCID', num(data.coverage.orcid_authors), 'Dari profil penulis teramati'], ['Penulis pertama Unand', num(k.first), 'Per karya; elemen authorship yang sama'], ['Corresponding Unand', num(k.corresponding), 'Kelengkapan corresponding tidak dijamin']]);
         entityTable(content, 'authors');
         intro(content,`${num(data.quality.author_id)} karya memiliki authorship tanpa OpenAlex author ID. Nama, afiliasi, dan posisi yang tersedia tetap ditampilkan; authorship tersebut tidak digabung sebagai satu profil penulis atau dihitung sebagai dosen baru.`);
@@ -561,10 +599,8 @@ function render() {
         line(panel(grid, 'Perjalanan publikasi jurnal', 'Jumlah karya jurnal menurut tahun publikasi. Klik tahun untuk mempersempit halaman ini.'), data.top.years, { onClick: drillYear });
         stacked(panel(grid, 'Jenis karya menurut tahun', 'Karya unik jurnal ini; jenis minor dapat berada di luar enam seri teratas.'), groupedYears('types'), data.top.types.slice(0, 6), { onClick: (y, s) => drill({ from: y.year, to: y.year, type: s.id }) });
         stacked(panel(grid, 'Komposisi akses per tahun', 'Proporsi status OA karya jurnal ini per tahun.'), data.oa_years.map(y => ({ ...y, values: y.oa })), data.top.oa, { percentage: true, onClick: (y, s) => drill({ from: y.year, to: y.year, oa: s.id }) });
-        // SDG card beside author affiliation (as in the OJS widget): top 8 goals, the rest named in the note.
-        const goals = data.top.sdgs.filter(r => r.count > 0), others = goals.slice(8);
-        bar(panel(grid, 'SDG karya jurnal', `Karya unik per tujuan; satu karya dapat masuk beberapa tujuan. Klasifikasi otomatis OpenAlex, bukan ukuran dampak.${others.length ? ` Tujuan lain: ${others.map(r => `SDG ${r.id} (${num(r.count)})`).join(', ')}.` : ''} Klik tujuan untuk mempersempit halaman ini.`),
-            goals, { limit: 8, onClick: r => drill({ sdg: r.id }) });
+        // SDG card beside author affiliation (as in the OJS widget).
+        sdgCard(grid, 'SDG karya jurnal');
         const own = data.top.journals.find(r => r.id === journal.id) || { count: 0, local: 0 };
         donut(panel(grid, 'Asal afiliasi penulis', 'Karya jurnal ini dengan sedikitnya satu authorship Unand dibanding tanpa afiliasi Unand.'),
             data.total ? [{ id: 'yes', name: 'Ada afiliasi Unand', count: own.local }, { id: 'no', name: 'Tanpa afiliasi Unand', count: own.count - own.local }] : [], r => drill({ local: r.id }));
@@ -602,7 +638,13 @@ function render() {
     }
     if (!data.total)
         intro(content, 'Tidak ada karya pada kombinasi filter ini. Ubah periode atau hapus filter tambahan untuk memperluas penelusuran.');
-    if (currentModule === 'publications' || journal) pubTable(content);
+    if (currentModule === 'publications' || journal || author) pubTable(content);
+}
+// Kartu SDG bersama halaman jurnal dan penulis: 8 tujuan teratas pada grafik, sisanya disebut di catatan.
+function sdgCard(grid, title) {
+    const goals = data.top.sdgs.filter(r => r.count > 0), others = goals.slice(8);
+    bar(panel(grid, title, `Karya unik per tujuan; satu karya dapat masuk beberapa tujuan. Klasifikasi otomatis OpenAlex, bukan ukuran dampak.${others.length ? ` Tujuan lain: ${others.map(r => `SDG ${r.id} (${num(r.count)})`).join(', ')}.` : ''} Klik tujuan untuk mempersempit halaman ini.`),
+        goals, { limit: 8, onClick: r => drill({ sdg: r.id }) });
 }
 function timelineTrack(p, label) {
     const controls = el('div', { class: 'timeline-controls' });
@@ -795,7 +837,7 @@ function entityTable(container, kind) {
             body.replaceChildren();
             for (const row of result.rows) {
                 const item = el('tr'), name = el('td'), button = el('button', { class: 'work-title', type: 'button' }, row.name);
-                button.onclick = () => drill({ [config.key]: row.id });
+                button.onclick = () => kind === 'authors' ? openAuthor(row.id) : drill({ [config.key]: row.id });
                 name.append(button);
                 item.append(el('td', { class: 'num' }, num(row.rank)), name);
                 for (const value of config.values(row)) item.append(el('td', {}, value));
@@ -988,7 +1030,14 @@ async function openWork(id) {
         panel.append(el('h3', {}, 'Penulis dan afiliasi Unand'));
         const authors = el('ul', { class: 'detail-list' });
         for (const a of w.author_names) {
-            const li = el('li', {}, `${a.name || a.id}${a.unand ? ' · Unand' : ''}${a.position === 'first' ? ' · penulis pertama' : ''}${a.corresponding ? ' · corresponding' : ''}`);
+            const roles = `${a.unand ? ' · Unand' : ''}${a.position === 'first' ? ' · penulis pertama' : ''}${a.corresponding ? ' · corresponding' : ''}`;
+            const li = el('li', {}, a.id && a.unand ? roles : `${a.name || a.id}${roles}`);
+            // Penulis ber-ID dengan authorship Unand ditautkan ke halaman profilnya.
+            if (a.id && a.unand) {
+                const open = el('button', { type: 'button', class: 'author-link', 'data-author-profile': a.id, title: 'Buka profil penulis' }, a.name || a.id);
+                open.onclick = () => { $('detail-dialog').close(); openAuthor(a.id); };
+                li.prepend(open);
+            }
             if (a.orcid) {
                 li.append(document.createTextNode(' · '), external('ORCID ↗', a.orcid));
             }
@@ -1070,6 +1119,17 @@ async function route() {
         const result = await getSummary();
         if (thisRender !== renderID)
             return;
+        // Profil hanya tersedia bagi penulis dengan authorship berafiliasi Unand di mana pun dalam snapshot.
+        if (authorPage() && !filter.from && !result.author_profile?.eligible) {
+            destroyCharts();
+            const box = el('div', { class: 'empty-state' }), go = el('button', { type: 'button', class: 'button secondary' }, 'Tampilkan karya penulis ini di Publikasi');
+            go.onclick = () => setHash('publications', { author: filter.author, scope: 'all', corpus: 'all' });
+            box.append(el('p', {}, `Profil tidak tersedia: penulis ${filter.author} tidak memiliki karya berafiliasi Unand dalam snapshot ini.`), go);
+            $('content').replaceChildren(box);
+            $('content').setAttribute('aria-busy', 'false');
+            note('');
+            return;
+        }
         data = result;
         render();
         note('');
@@ -1113,21 +1173,24 @@ async function init() {
         document.addEventListener('contextmenu', event => {
             if (!event.target.closest('input,textarea,select,[contenteditable="true"]')) event.preventDefault();
         });
+        // Menyalin dan memotong konten halaman diblokir; kolom formulir (pencarian, filter) tetap dapat disunting.
+        for (const type of ['copy', 'cut']) document.addEventListener(type, event => {
+            if (!event.target.closest?.('input,textarea,select,[contenteditable="true"]')) event.preventDefault();
+        });
         document.addEventListener('dragstart', event => {
             if (event.target.closest('img,svg,canvas')) event.preventDefault();
         });
         document.addEventListener('keydown', event => {
-            if ((event.ctrlKey || event.metaKey) && !event.altKey && ['s', 'p'].includes(event.key.toLowerCase())) {
+            if ((event.ctrlKey || event.metaKey) && !event.altKey && ['s', 'p', 'u'].includes(event.key.toLowerCase())) {
                 event.preventDefault();
-                note('Pintasan simpan dan cetak dinonaktifkan pada dashboard ini.');
+                note('Pintasan simpan, cetak, dan lihat sumber dinonaktifkan pada dashboard ini.');
             }
         });
     }
     document.querySelector('.skip-link').onclick = event => {event.preventDefault();$('main').focus();$('main').scrollIntoView();};
     MODULES.forEach(([id, label, number], i) => { if (id === 'audit' && !SHOW_AUDIT_TAB) return; const a = el('a', { href: '#' + id, class: 'nav-link', 'data-module': id }); a.append(el('span', { class: 'nav-number', 'aria-hidden': 'true' }, icons[i]), el('span', {}, label)); a.onclick = e => { e.preventDefault(); if (!manifest)
-        return; document.querySelector('.sidebar').classList.remove('open'); $('menu-toggle').setAttribute('aria-expanded', 'false'); const next = moduleDefaults(id); for (const k of ['from', 'to', 'type', 'field', 'corpus', 'oa'])
-        if (filter[k] && !(k === 'corpus' && (filter.journal || filter.corpus === defaultCorpus(currentModule))))
-            next[k] = filter[k]; setHash(id, next); }; $('navigation').append(a); });
+        return; document.querySelector('.sidebar').classList.remove('open'); $('menu-toggle').setAttribute('aria-expanded', 'false'); // Setiap tab dibuka bersih: filter bawaan tab itu sendiri, tanpa membawa filter sebelumnya (sama dengan Reset semua filter).
+        topicGroup = ''; topicSubfield = ''; const previousHash = location.hash; setHash(id, moduleDefaults(id)); if (location.hash === previousHash) route(); }; $('navigation').append(a); });
     $('filters-form').onsubmit = e => { e.preventDefault(); if (!manifest)
         return; const next = { ...filter }; delete next.metricKind; delete next.metricPart; for (const [k, v] of new FormData(e.currentTarget))
         next[k] = v; setHash(currentModule, next); };
@@ -1136,7 +1199,7 @@ async function init() {
         topicSubfield = '';
         if (!manifest) return;
         const previousHash = location.hash;
-        setHash(currentModule, journalPage() ? { journal: filter.journal } : moduleDefaults(currentModule));
+        setHash(currentModule, journalPage() ? { journal: filter.journal } : authorPage() ? { author: filter.author } : moduleDefaults(currentModule));
         if (location.hash === previousHash) route();
     };
     $('menu-toggle').onclick = () => { const active = document.querySelector('.sidebar').classList.toggle('open'); $('menu-toggle').setAttribute('aria-expanded', String(active)); };

@@ -1,11 +1,11 @@
 # Dashboard Publikasi Universitas Andalas
 
-**[Buka dashboard publik](https://ikhwan-arief.github.io/unand-publication-dashboard/)** — tidak memerlukan akun GitHub.
+**[Buka dashboard](https://ikhwan-arief.github.io/unand-publication-dashboard/)**. Tidak memerlukan akun.
 
-Repositori ini hanya menyimpan hasil situs statis dan alur penerbitan GitHub Pages. Pengembangan, pengambilan data OpenAlex, pengujian, dan kredensial dikelola terpisah dalam repositori private.
+Dashboard ini menyajikan publikasi, dampak sitasi, kolaborasi, topik, SDG, dan keterbukaan akses Universitas Andalas dari metadata publik OpenAlex. Snapshot diperbarui mingguan; tanggal snapshot yang berlaku tercantum pada dashboard dan di `data/manifest.json`. Jika pembaruan gagal, versi terakhir yang berhasil tetap tayang.
 
-Snapshot diperbarui mingguan. Waktu pembaruan aktual tersedia pada dashboard dan `data/manifest.json`. Jika proses pembaruan gagal, situs mempertahankan deployment terakhir yang berhasil.
+Dashboard independen berbasis metadata publik OpenAlex, bukan statistik resmi Universitas Andalas yang telah disahkan. Metadata OpenAlex tersedia dengan CC0; hak atas karya yang dideskripsikan mengikuti pemegang haknya masing-masing.
 
-Dashboard independen berbasis metadata publik OpenAlex, bukan statistik resmi Universitas Andalas yang telah disahkan. Metadata OpenAlex tersedia dengan CC0; hak dokumen mengikuti lisensinya masing-masing. Diagram dan data yang disajikan ke browser tetap dapat diakses publik.
+Dikompilasi dan dikembangkan oleh **Ikhwan Arief**.
 
-Dikompilasi dan dikembangkan oleh **Ikhwan Arief** (ikhwan[at]eng.unand.ac.id).
+Copyright © 2026 Ikhwan Arief. Kode berlisensi PolyForm Noncommercial License 1.0.0; penggunaan komersial memerlukan izin tertulis dari pemegang hak cipta. Lihat [LICENSE](LICENSE) dan [NOTICE](NOTICE).

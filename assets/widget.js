@@ -1,3 +1,7 @@
+/*! Copyright (c) 2026 Ikhwan Arief (ikhwan[at]eng.unand.ac.id). All rights reserved.
+ * Licensed under the PolyForm Noncommercial License 1.0.0
+ * (https://polyformproject.org/licenses/noncommercial/1.0.0). Commercial use requires prior
+ * written permission from the copyright holder. See LICENSE and NOTICE. */
 /* Unand journal metrics widget for any OJS theme. No dependencies; inherits the host page's fonts and colours.
    Usage: <div data-unand-journal="S4306516684"></div> or the text placeholder [unand-metrics S4306516684],
    plus <script src="https://…/assets/widget.js" defer></script>. Data: one precomputed file per journal.
@@ -59,7 +63,7 @@
         return own === 'en' || own === 'id' ? own : !page || /^(id|ms|in)\b/.test(page) ? 'id' : 'en'; };
     const num = v => v === null || v === undefined ? '—' : nf.format(v), dec = v => v === null || v === undefined ? S.na : df.format(v);
     const pct = v => v === null || v === undefined ? '—' : df.format(v) + '%';
-    const CSS = `.uam{font:inherit;color:inherit;line-height:1.5;max-width:100%}.uam *{box-sizing:border-box}
+    const CSS = `.uam{font:inherit;color:inherit;line-height:1.5;max-width:100%;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}.uam svg,.uam img,.uam a{-webkit-user-drag:none}.uam *{box-sizing:border-box}
 .uam h3,.uam h4{font-family:inherit;color:inherit;margin:0 0 .3em;line-height:1.25}.uam h3{font-size:1.25em;margin-top:1.2em}.uam h4{font-size:1em}
 .uam p{margin:.3em 0}.uam small,.uam .uam-note{font-size:.82em;opacity:.78}
 .uam-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(max(min(100%,290px),calc(50% - 7px)),1fr));gap:14px;margin:12px 0}
@@ -249,6 +253,9 @@
         W = chartWidth(mount);
         setLanguage(mount.dataset.uamLang);
         const j = data.journal, k = data.kpis, root = el('div', { class: 'uam', lang: S.locale.slice(0, 2) });
+        // Proteksi konten hanya di dalam widget: tanpa menu konteks (salin/simpan gambar), salin, potong, atau seret.
+        // Halaman OJS di luar widget tidak diubah; tautan, tooltip, dan pemilih tahun tetap berfungsi.
+        for (const type of ['contextmenu', 'copy', 'cut', 'dragstart', 'selectstart']) root.addEventListener(type, event => event.preventDefault());
         const meta = [j.issn.length ? 'ISSN ' + j.issn.join(', ') : null, j.doaj === null ? null : `DOAJ: ${j.doaj ? S.yes : S.no}`, j.apc_usd === null ? null : S.apc(num(j.apc_usd))].filter(Boolean).join(' · ');
         root.append(el('p', { class: 'uam-note' }, `${meta ? meta + ' · ' : ''}${S.updated(new Intl.DateTimeFormat(S.locale, { dateStyle: 'long', timeZone: 'Asia/Jakarta' }).format(new Date(data.updated_at)))}`));
         const kpis = el('div', { class: 'uam-grid uam-kpis' }), [kp, kc, ko, ki, kf, kt] = S.kpis;

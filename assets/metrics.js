@@ -1,3 +1,7 @@
+/*! Copyright (c) 2026 Ikhwan Arief (ikhwan[at]eng.unand.ac.id). All rights reserved.
+ * Licensed under the PolyForm Noncommercial License 1.0.0
+ * (https://polyformproject.org/licenses/noncommercial/1.0.0). Commercial use requires prior
+ * written permission from the copyright holder. See LICENSE and NOTICE. */
 /* Pure metric functions shared by the browser worker and snapshot builder. */
 export const MODULES = [
     ['overview', 'Ringkasan', '01'], ['publications', 'Publikasi', '02'],
@@ -203,6 +207,28 @@ export function journalWidgetData(journal, works, entities, manifest, dataset) {
             sdgs: (workSdgs(works.find(x => x.id === w.id) || {}) || []).map(g => [g.number, g.score]) })),
         sdgs: summary.top.sdgs.filter(r => /^(?:[1-9]|1[0-7])$/.test(r.id)).map(r => [Number(r.id), r.count]),
         sdg_policy: { classifier: manifest.sdg?.classifier || 'unknown', scores: Boolean(manifest.sdg?.scores) } };
+}
+// Kode bahasa OpenAlex (ISO 639-1, mis. "id") ditampilkan sebagai nama bahasa Indonesia ("Indonesia"); kode tetap menjadi ID filter.
+const LANGUAGES = (() => { try { return new Intl.DisplayNames(['id'], { type: 'language' }); } catch { return null; } })();
+export function languageName(code) {
+    if (!code || code === 'unknown') return 'Tidak diketahui';
+    if (!/^[a-z]{2,3}$/i.test(code)) return code;
+    try { const name = LANGUAGES?.of(code); return name && name !== code ? name : code; } catch { return code; }
+}
+// Identitas satu penulis (profil OpenAlex, seluruh afiliasi) dan perannya pada karya yang diberikan.
+// eligible: penulis memiliki authorship berafiliasi Unand di mana pun dalam snapshot, apa pun filter aktifnya.
+export function authorProfile(works, entities, id, everything = works) {
+    const entity = entities.authors[id] || {}, own = works.map(w => w.authors.filter(a => a.id === id)).filter(list => list.length);
+    const years = works.map(w => w.year).filter(Number.isInteger);
+    return { id, name: entity.name || id, orcid: entity.orcid || null, works: own.length,
+        eligible: everything.some(w => w.authors.some(a => a.id === id && a.unand)),
+        home_works: own.filter(list => list.some(a => a.unand)).length,
+        first_author: own.filter(list => list.some(a => a.position === 'first')).length,
+        last_author: own.filter(list => list.some(a => a.position === 'last')).length,
+        corresponding: own.filter(list => list.some(a => a.corresponding)).length,
+        first_year: years.length ? Math.min(...years) : null, last_year: years.length ? Math.max(...years) : null,
+        career: { works: entity.career_works ?? null, citations: entity.career_citations ?? null,
+            h_index: entity.career_stats?.h_index ?? null, i10_index: entity.career_stats?.i10_index ?? null } };
 }
 // Recap across all mapped journals: an unweighted mean of journal values plus a pooled ratio of summed parts.
 export function journalRecap(dataset, year) {
@@ -534,7 +560,7 @@ export function summarize(works, entities, filter, manifest, history = [], table
         corresponding += hasCorresponding ? 1 : 0;
         add('years', work.year || 'unknown', work.year || 'Tidak diketahui', work);
         add('types', work.type, work.type, work);
-        add('languages', work.language, work.language, work);
+        add('languages', work.language, languageName(work.language), work);
         add('fields', work.field, name('field', work.field), work);
         for (const topic of new Set(work.topics?.length ? work.topics : [work.topic || 'unknown'])) add('topics', topic, name('topics',topic),work);
         add('oa', work.oa_status, work.oa_status, work);
@@ -641,6 +667,8 @@ export function summarize(works, entities, filter, manifest, history = [], table
         facets: { fields: [...fields].map(([id, name]) => ({ id, name })), topics: allTopics,
             types: sorted('types').map(({ id, name }) => ({ id, name })) },
         history: history.slice(-12), current_year: currentYear,
+        // Halaman profil penulis: identitas dan peran penulis itu sendiri pada karya terpilih.
+        ...(filter.author ? { author_profile: authorProfile(selected, entities, filter.author, works) } : {}),
         citation_ratios: ratios ? institutionCitationMetrics(works, entities, filter, currentYear) : null,
         // A citation-ratio drill reports the numerator/denominator of the same filter it lists.
         metric_row: filter.metricKind && !filter.journal && filter.metricKind !== 'fwci'

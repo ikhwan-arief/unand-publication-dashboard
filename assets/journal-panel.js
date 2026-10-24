@@ -1,3 +1,7 @@
+/*! Copyright (c) 2026 Ikhwan Arief (ikhwan[at]eng.unand.ac.id). All rights reserved.
+ * Licensed under the PolyForm Noncommercial License 1.0.0
+ * (https://polyformproject.org/licenses/noncommercial/1.0.0). Commercial use requires prior
+ * written permission from the copyright holder. See LICENSE and NOTICE. */
 import { el, panel, line, bar, PALETTE } from './charts.js';
 import { journalRecap } from './metrics.js';
 
@@ -205,6 +209,31 @@ export function renderJournalHeader(container, dataset, journal, onBack) {
     back.onclick = onBack;
     header.append(back, el('h2', { id: 'journal-page-title' }, journal.name),
         el('p', { class: 'panel-note' }, `${journal.issn.length ? 'ISSN ' + journal.issn.join(', ') + ' · ' : ''}Halaman khusus jurnal: KPI, metrik, grafik, dan daftar artikel hanya memuat karya yang terbit pada jurnal ini (seluruh afiliasi dan korpus terkumpul). Data diperbarui: ${updated(dataset.updated_at)} WIB.`));
+    container.append(header);
+    return header;
+}
+// Kepala profil penulis: identitas, peran pada karya di dashboard ini, dan angka karier OpenAlex yang dipisahkan.
+export function renderAuthorHeader(container, author, onBack) {
+    // Judul halaman sudah memuat nama penulis, sehingga kepala dimulai dengan tautan identitas.
+    const header = el('section', { class: 'journal-page-head author-page-head', 'data-author-page': author.id }), back = el('button', { class: 'button secondary', type: 'button' }, '← Semua penulis Unand');
+    back.onclick = onBack;
+    const facts = el('dl', { class: 'journal-counts author-facts' });
+    const span = author.first_year === null ? 'Tidak tersedia' : author.first_year === author.last_year ? String(author.first_year) : `${author.first_year}–${author.last_year}`;
+    for (const [label, value] of [['Karya dalam dashboard ini', count(author.works)], ['Berafiliasi Unand', count(author.home_works)], ['Tahun publikasi', span],
+        ['Penulis pertama', count(author.first_author)], ['Penulis terakhir', count(author.last_author)], ['Penulis korespondensi', count(author.corresponding)]])
+        facts.append(el('dt', {}, label), el('dd', {}, value));
+    const career = el('dl', { class: 'journal-counts author-facts' }), c = author.career;
+    const value = n => n === null || n === undefined ? 'Tidak tersedia' : count(n);
+    for (const [label, n] of [['Karya', c.works], ['Sitasi', c.citations], ['h-index', c.h_index], ['i10-index', c.i10_index]]) career.append(el('dt', {}, label), el('dd', {}, value(n)));
+    const identity = el('p', { class: 'panel-note' }, `Penulis OpenAlex ${author.id}`);
+    if (author.orcid) identity.append(document.createTextNode(' · '), link('ORCID ↗', author.orcid));
+    identity.append(document.createTextNode(' · '), link('Profil OpenAlex ↗', 'https://openalex.org/' + author.id));
+    const grid = el('div', { class: 'author-head-grid' }), left = el('div'), right = el('div');
+    left.append(el('h3', {}, 'Dalam dashboard ini'), facts);
+    right.append(el('h3', {}, 'Karier OpenAlex, seluruh afiliasi'), career);
+    grid.append(left, right);
+    header.append(back, identity, grid,
+        el('p', { class: 'panel-note' }, 'KPI, grafik, dan daftar di bawah memuat seluruh karya dalam dashboard ini yang mencantumkan penulis ini, termasuk karya di jurnal Unand dengan afiliasi lain; filter mempersempitnya. Angka karier berasal dari profil OpenAlex penulis dan mencakup karya di luar dashboard ini. Identitas penulis berasal dari disambiguasi OpenAlex dan dapat keliru; ini bukan penilaian kinerja resmi.'));
     container.append(header);
     return header;
 }
