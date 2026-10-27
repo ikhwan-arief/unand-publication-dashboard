@@ -299,6 +299,42 @@ export function scatter(p, rows, { x = 'count', y = 'citations', xTitle = 'Publi
         onClick: (_e, e) => e[0] && onClick?.(rows[e[0].index]) });
     accessible(p, rows.slice(0, 50).map(r => ({ ...r, description: `${r.name || r.title}: ${xTitle} ${decimal.format(r[x])}; ${yTitle} ${decimal.format(r[y])}` })), onClick);
 }
+export function hIndexCurve(p, metric, onClick) {
+    const rows = metric?.points || [];
+    if (!rows.length) {
+        empty(p, 'Tidak ada karya untuk filter ini.');
+        return;
+    }
+    const core = rows.filter(row => row.in_h_core), outside = rows.filter(row => !row.in_h_core);
+    // The threshold line stops at the highest citation count so the y-axis fits the data, not the work count.
+    const maxAxis = Math.max(...rows.map(row => row.citations), 1);
+    const pointData = group => group.map(row => ({ x: row.rank, y: row.citations }));
+    const datasets = [
+        { label: 'Ambang h: sitasi = peringkat', type: 'line', data: [{ x: 0, y: 0 }, { x: maxAxis, y: maxAxis }],
+            borderColor: '#947337', borderDash: [6, 5], borderWidth: 1.5, pointRadius: 0, fill: false },
+        { label: 'Termasuk h-core', data: pointData(core), _rows: core, backgroundColor: '#B8934A', borderColor: '#6D5424', borderWidth: 1.5, pointRadius: 5, pointHoverRadius: 8 },
+        { label: 'Di luar h-core', data: pointData(outside), _rows: outside, backgroundColor: '#28745BB3', borderColor: '#ffffff', borderWidth: 1, pointRadius: 4, pointHoverRadius: 7 },
+    ];
+    chart(p, 'scatter', { datasets }, { interaction: { mode: 'nearest', intersect: true },
+        scales: {
+            x: { beginAtZero: true, title: { display: true, text: 'Peringkat artikel berdasarkan sitasi', font: { size: 10 } }, grid: { color: '#edf0e9' }, ticks: { precision: 0, font: { size: 9 } } },
+            y: { beginAtZero: true, title: { display: true, text: 'Jumlah sitasi kumulatif', font: { size: 10 } }, grid: { color: '#edf0e9' }, ticks: { precision: 0, font: { size: 9 } } },
+        },
+        plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } }, tooltip: { callbacks: {
+            title: items => items[0]?.dataset?._rows?.[items[0].dataIndex]?.title || items[0]?.dataset.label || '',
+            label: ctx => { const row = ctx.dataset._rows?.[ctx.dataIndex]; return row ? [
+                `${row.year ?? 'Tahun tidak tersedia'} · peringkat ${integer.format(row.rank)}`,
+                `${integer.format(row.citations)} sitasi · ${row.in_h_core ? 'Termasuk h-core' : 'Di luar h-core'}`,
+                'Klik untuk membuka rincian artikel',
+            ] : ctx.dataset.label; },
+        } } },
+        onClick: (_event, items) => { const item = items[0], row = item && datasets[item.datasetIndex]._rows?.[item.index]; if (row) onClick?.(row); },
+        onHover: (event, items) => { if (event.native?.target) event.native.target.style.cursor = items.some(item => datasets[item.datasetIndex]._rows) ? 'pointer' : 'default'; },
+    });
+    const canvas = p.body.querySelector('canvas');
+    canvas?.setAttribute('aria-label', `Kurva h-index ${metric.value}: peringkat artikel pada sumbu X dan jumlah sitasi pada sumbu Y`);
+    accessible(p, rows.map(row => ({ ...row, description: `Peringkat ${integer.format(row.rank)} — ${row.title} — ${integer.format(row.citations)} sitasi — ${row.in_h_core ? 'termasuk h-core' : 'di luar h-core'}` })), onClick);
+}
 export function heatmap(p, rows, years, onCell) {
     rows = rows.slice(0, 10);
     if (!rows.length || !years.length) {

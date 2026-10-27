@@ -275,6 +275,26 @@ export function hIndex(values) {
     const sorted = [...values].sort((a, b) => b - a);
     return sorted.reduce((h, value, index) => value >= index + 1 ? index + 1 : h, 0);
 }
+export function hIndexChart(works) {
+    const sorted = [...works].sort((a, b) => b.citations - a.citations ||
+        (Number.isInteger(b.year) ? b.year : -Infinity) - (Number.isInteger(a.year) ? a.year : -Infinity) ||
+        String(a.id).localeCompare(String(b.id)));
+    const value = hIndex(sorted.map(work => work.citations));
+    return { value, works_n: sorted.length, points: sorted.map((work, index) => ({
+        id: work.id, title: work.title, rank: index + 1, citations: work.citations,
+        year: Number.isInteger(work.year) ? work.year : null, in_h_core: index < value,
+    })) };
+}
+export function citationConcentrationTop10(works) {
+    const works_n = works.length, total_citations = works.reduce((sum, work) => sum + work.citations, 0);
+    if (!works_n || !total_citations)
+        return { value: null, top_works_n: works_n ? Math.max(1, Math.ceil(works_n * .1)) : 0,
+            works_n, top_citations: 0, total_citations };
+    const top_works_n = Math.max(1, Math.ceil(works_n * .1));
+    const top_citations = [...works].sort((a, b) => b.citations - a.citations).slice(0, top_works_n)
+        .reduce((sum, work) => sum + work.citations, 0);
+    return { value: top_citations / total_citations * 100, top_works_n, works_n, top_citations, total_citations };
+}
 export const institutionIDs = work => [...new Set(work.authors.flatMap(a => a.institutions))];
 export function auditFlags(work, year) {
     return {
@@ -645,12 +665,15 @@ export function summarize(works, entities, filter, manifest, history = [], table
     const allTopics = [...new Map(topicCandidates.flatMap(w=>(w.topics?.length?w.topics:[w.topic]).filter(Boolean).map(id=>[id,{id,name:name('topics',id),field:entities.topics[id]?.field,subfield:entities.topics[id]?.subfield}]))).values()];
     const growth = normalizedPublicationGrowth(selected, top.years, filter, currentYear);
     const fwci = normalizedAnnualFWCI(selected, top.years, filter, currentYear);
+    const scopedHIndexValue = hIndex(selected.map(work => work.citations));
+    const scopedHIndexChart = filter.author ? hIndexChart(selected) : null;
+    const citationConcentration = citationConcentrationTop10(selected);
     return { filter, total: selected.length, kpis: { publications: selected.length, citations, oa: percentage(oa, selected.length),
             international: percentage(international, selected.length), fwci: fwciN ? fwciSum / fwciN : null,
             fwci_n: fwciN, fwci_coverage: percentage(fwciN, selected.length), top10, top1, eligible,
             top10_share: percentage(top10, eligible), percentile_coverage: percentage(eligible, selected.length),
             cited_share: percentage(cited, selected.length), median_citations: median(selected.map(w => w.citations)),
-            h_index: hIndex(selected.map(w => w.citations)), authors: affiliatedAuthors.size,
+            h_index: scopedHIndexValue, citation_concentration_top10: citationConcentration, authors: affiliatedAuthors.size,
             partners: maps.partners.size, countries: localCountries.size, growth: prior ? (last - prior) / prior * 100 : null,
             field_concentration: selected.length ? [...maps.fields.values()].reduce((n, r) => n + (r.count / selected.length) ** 2, 0) : null,
             top3_fields_share: percentage(sorted('fields').slice(0, 3).reduce((n, r) => n + r.count, 0), selected.length),
@@ -670,7 +693,7 @@ export function summarize(works, entities, filter, manifest, history = [], table
             types: sorted('types').map(({ id, name }) => ({ id, name })) },
         history: history.slice(-12), current_year: currentYear,
         // Halaman profil penulis: identitas dan peran penulis itu sendiri pada karya terpilih.
-        ...(filter.author ? { author_profile: authorProfile(selected, entities, filter.author, works) } : {}),
+        ...(filter.author ? { author_profile: authorProfile(selected, entities, filter.author, works), h_index_chart: scopedHIndexChart } : {}),
         citation_ratios: ratios ? institutionCitationMetrics(works, entities, filter, currentYear) : null,
         // A citation-ratio drill reports the numerator/denominator of the same filter it lists.
         metric_row: filter.metricKind && !filter.journal && filter.metricKind !== 'fwci'

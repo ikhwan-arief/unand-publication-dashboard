@@ -212,7 +212,7 @@ export function renderJournalHeader(container, dataset, journal, onBack) {
     container.append(header);
     return header;
 }
-// Kepala profil penulis: identitas, peran pada karya di dashboard ini, dan angka karier OpenAlex yang dipisahkan.
+// Kepala profil penulis: identitas, peran pada karya di dashboard ini, dan angka sepanjang karier yang dipisahkan.
 export function renderAuthorHeader(container, author, onBack) {
     // Judul halaman sudah memuat nama penulis, sehingga kepala dimulai dengan tautan identitas.
     const header = el('section', { class: 'journal-page-head author-page-head', 'data-author-page': author.id }), back = el('button', { class: 'button secondary', type: 'button' }, '← Semua penulis Unand');
@@ -224,16 +224,16 @@ export function renderAuthorHeader(container, author, onBack) {
         facts.append(el('dt', {}, label), el('dd', {}, value));
     const career = el('dl', { class: 'journal-counts author-facts' }), c = author.career;
     const value = n => n === null || n === undefined ? 'Tidak tersedia' : count(n);
-    for (const [label, n] of [['Karya', c.works], ['Sitasi', c.citations], ['h-index', c.h_index], ['i10-index', c.i10_index]]) career.append(el('dt', {}, label), el('dd', {}, value(n)));
+    for (const [label, n] of [['Karya', c.works], ['Sitasi', c.citations], ['i10-index', c.i10_index]]) career.append(el('dt', {}, label), el('dd', {}, value(n)));
     const identity = el('p', { class: 'panel-note' }, `Penulis OpenAlex ${author.id}`);
     if (author.orcid) identity.append(document.createTextNode(' · '), link('ORCID ↗', author.orcid));
     identity.append(document.createTextNode(' · '), link('Profil OpenAlex ↗', 'https://openalex.org/' + author.id));
     const grid = el('div', { class: 'author-head-grid' }), left = el('div'), right = el('div');
     left.append(el('h3', {}, 'Dalam dashboard ini'), facts);
-    right.append(el('h3', {}, 'Karier OpenAlex, seluruh afiliasi'), career);
+    right.append(el('h3', {}, 'Sepanjang karier'), career);
     grid.append(left, right);
     header.append(back, identity, grid,
-        el('p', { class: 'panel-note' }, 'KPI, grafik, dan daftar di bawah memuat seluruh karya dalam dashboard ini yang mencantumkan penulis ini, termasuk karya di jurnal Unand dengan afiliasi lain; filter mempersempitnya. Angka karier berasal dari profil OpenAlex penulis dan mencakup karya di luar dashboard ini. Identitas penulis berasal dari disambiguasi OpenAlex dan dapat keliru; ini bukan penilaian kinerja resmi.'));
+        el('p', { class: 'panel-note' }, 'KPI, grafik, dan daftar di bawah memuat seluruh karya dalam dashboard ini yang mencantumkan penulis ini, termasuk karya di jurnal Unand dengan afiliasi lain; filter mempersempitnya. Angka sepanjang karier berasal dari profil OpenAlex penulis dan mencakup karya di luar dashboard ini; h-index hanya dihitung dari karya dalam dashboard ini. Identitas penulis berasal dari disambiguasi OpenAlex dan dapat keliru; ini bukan penilaian kinerja resmi.'));
     container.append(header);
     return header;
 }

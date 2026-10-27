@@ -5,7 +5,7 @@
 import { MODULES, SDGS, SDG_COLORS, METRIC_KINDS, languageName, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod, workSdgs, citingShard, CITING_FIELDS } from './metrics.js';
 import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderAuthorHeader, renderJournalMetrics, renderJournalCitations, renderJournalTable, METRIC_TITLES, metricYear } from './journal-panel.js';
 import { EXPORT_CONTROLS, SHOW_AUDIT_TAB, CONTENT_PROTECTION } from './config.js';
-import { el, panel, bar, line, donut, stacked, scatter, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE, sdgBars } from './charts.js';
+import { el, panel, bar, line, donut, stacked, scatter, hIndexCurve, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE, sdgBars } from './charts.js';
 const $ = id => document.getElementById(id), nf = new Intl.NumberFormat('id-ID'), df = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
 const num = n => n === null || n === undefined ? 'Tidak tersedia' : nf.format(n);
 const decimal = n => n === null || n === undefined ? 'Tidak tersedia' : df.format(n);
@@ -500,6 +500,8 @@ function render() {
         // Dua per baris; setiap grafik hanya memuat karya penulis ini dan klik mempersempit halaman ini.
         line(panel(grid, 'Perjalanan publikasi', 'Karya penulis menurut tahun publikasi. Klik tahun untuk mempersempit halaman ini.'), data.top.years, { onClick: drillYear });
         line(panel(grid, 'Sitasi menurut tahun diterima', 'Sitasi kepada karya penulis pada setiap tahun (counts_by_year OpenAlex); jendela tersedia terbatas.'), data.citation_years.map(([year, count]) => ({ year, count })), { label: 'Sitasi', unit: 'sitasi' });
+        const hChart = data.h_index_chart, hPanel = panel(grid, 'Kurva h-index karya aktif', `h-index: ${num(hChart.value)} · ${num(hChart.works_n)} karya aktif · ${num(hChart.value)} karya dalam h-core. Nilai mengikuti seluruh filter aktif.`, true);
+        hIndexCurve(hPanel, hChart, row => openWork(row.id));
         stacked(panel(grid, 'Jenis karya menurut tahun', 'Jenis minor dapat berada di luar enam seri teratas.'), groupedYears('types'), data.top.types.slice(0, 6), { onClick: (y, s) => drill({ from: y.year, to: y.year, type: s.id }) });
         bar(panel(grid, 'Sebaran sitasi', 'Jumlah karya per rentang sitasi. Klik rentang untuk melihat karyanya.'), data.histogram, { horizontal: false, onClick: r => drill({ bin: r.id }) });
         groupBar(grid, 'Sumber publikasi teratas', 'sources', 'source');
@@ -514,7 +516,7 @@ function render() {
         line(fwciPanel, fwciYears.map(r => ({ year: r.year, value: r.fwci, n: r.fwci_n })), { value: 'value', label: 'Rerata FWCI', unit: 'FWCI', reference: 1, referenceLabel: 'Acuan global FWCI 1', color: PALETTE[3],
             tooltip: r => `${r.year}: rerata FWCI ${r.value === null ? 'tidak tersedia' : decimal(r.value)} · ${num(r.n)} karya ber-FWCI${r.n < 5 ? ' · basis kecil' : ''}`, onClick: drillYear });
         fwciHelp(fwciPanel.node);
-        minis(content, [['h-index di sini', num(k.h_index), 'Dalam karya pada halaman ini'], ['Median sitasi', decimal(k.median_citations), 'Per karya'], ['Karya disitasi', pct(k.cited_share), 'Minimal satu sitasi'], ['Cakupan FWCI', pct(k.fwci_coverage), 'Karya dengan FWCI valid']]);
+        minis(content, [['Median sitasi', decimal(k.median_citations), 'Per karya'], ['Karya disitasi', pct(k.cited_share), 'Minimal satu sitasi'], ['Cakupan FWCI', pct(k.fwci_coverage), 'Karya dengan FWCI valid']]);
         collaborationMap(grid, { title: 'Negara kolaborasi', includeHome: true, unit: 'karya',
             note: 'Negara afiliasi seluruh penulis pada karya ini, termasuk Indonesia. Luas bubble sebanding dengan jumlah karya; satu karya dapat masuk beberapa negara.' });
     }
@@ -542,6 +544,9 @@ function render() {
         select.onchange = draw;
         draw();
         minis(content, [['Median sitasi', decimal(k.median_citations), 'Tidak terlalu dipengaruhi pencilan'], ['h-index lingkup', num(k.h_index), 'Hanya himpunan karya aktif'], ['Rerata sitasi', decimal(data.total ? k.citations / data.total : null), 'Sitasi kumulatif dibagi karya'], ['Cakupan FWCI', pct(k.fwci_coverage), 'Nilai kosong dikeluarkan dari rerata']]);
+        const concentration = k.citation_concentration_top10;
+        minis(content, [['Konsentrasi sitasi 10% karya teratas', pct(concentration.value), concentration.value === null ? (concentration.works_n ? 'Seluruh karya belum disitir' : 'Tidak ada karya') : `${num(concentration.top_works_n)} dari ${num(concentration.works_n)} karya menyumbang ${num(concentration.top_citations)} dari ${num(concentration.total_citations)} sitasi`]]);
+        intro(content, 'Konsentrasi sitasi menunjukkan seberapa besar porsi sitasi yang diterima 10% karya teratas dalam himpunan aktif. Nilai tinggi berarti sitasi lebih terkonsentrasi, bukan otomatis menandakan mutu yang lebih tinggi atau lebih rendah.');
     }
     else if (currentModule === 'collaboration') {
         scatter(panel(grid, 'Negara mitra penelitian', 'Negara di luar Indonesia; satu karya dapat masuk beberapa negara.'), data.top.countries.filter(r => r.id !== 'ID'), { bubble: true, onClick: r => drill({ country: r.id }) });
