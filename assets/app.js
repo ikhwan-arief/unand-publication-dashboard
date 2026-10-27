@@ -508,18 +508,18 @@ function render() {
         // Dua per baris; setiap grafik hanya memuat karya penulis ini dan klik mempersempit halaman ini.
         line(panel(grid, 'Perjalanan publikasi', 'Karya penulis menurut tahun publikasi. Klik tahun untuk mempersempit halaman ini.'), data.top.years, { onClick: drillYear });
         line(panel(grid, 'Sitasi menurut tahun diterima', 'Sitasi kepada karya penulis pada setiap tahun (counts_by_year OpenAlex); jendela tersedia terbatas.'), data.citation_years.map(([year, count]) => ({ year, count })), { label: 'Sitasi', unit: 'sitasi' });
-        // Baris kedua: kurva h-index dan sebaran sitasi; baris ketiga: jenis karya dan negara kolaborasi.
+        // Baris kedua: kurva h-index | sebaran sitasi; ketiga: jenis karya | akses; keempat: SDG | negara kolaborasi.
         const hChart = data.h_index_chart, uncited = hChart.points.filter(row => !(row.citations > 0)).length;
         const hPanel = panel(grid, 'Kurva h-index karya aktif', `h-index: ${num(hChart.value)} · ${num(hChart.works_n)} karya aktif · ${num(hChart.value)} karya dalam h-core.${uncited ? ` ${num(uncited)} karya tanpa sitasi tidak digambar.` : ''} Nilai mengikuti seluruh filter aktif.`);
         hIndexCurve(hPanel, hChart, row => openWork(row.id));
         bar(panel(grid, 'Sebaran sitasi', 'Jumlah karya per rentang sitasi. Klik rentang untuk melihat karyanya.'), data.histogram, { horizontal: false, onClick: r => drill({ bin: r.id }) });
         stacked(panel(grid, 'Jenis karya menurut tahun', 'Jenis minor dapat berada di luar enam seri teratas.'), groupedYears('types'), data.top.types.slice(0, 6), { onClick: (y, s) => drill({ from: y.year, to: y.year, type: s.id }) });
+        donut(panel(grid, 'Jalur keterbukaan akses', 'Status OA karya penulis pada saat snapshot.'), data.top.oa, r => drill({ oa: r.id === 'unknown' ? '' : r.id }));
+        sdgCard(grid, 'SDG karya penulis');
         collaborationMap(grid, { title: 'Negara kolaborasi', includeHome: true, unit: 'karya', wide: false,
             note: 'Negara afiliasi seluruh penulis pada karya ini, termasuk Indonesia. Luas bubble sebanding dengan jumlah karya; satu karya dapat masuk beberapa negara.' });
         groupBar(grid, 'Sumber publikasi teratas', 'sources', 'source');
         groupBar(grid, 'Bahasa metadata', 'languages', 'language', 'Bahasa judul atau abstrak, belum tentu bahasa teks lengkap.');
-        sdgCard(grid, 'SDG karya penulis');
-        donut(panel(grid, 'Jalur keterbukaan akses', 'Status OA karya penulis pada saat snapshot.'), data.top.oa, r => drill({ oa: r.id === 'unknown' ? '' : r.id }));
         treemap(panel(grid, 'Bidang penelitian', 'Satu bidang utama per karya; klik bidang untuk mempersempit halaman ini.'), data.top.fields, r => drill({ field: r.id }));
         groupBar(grid, 'Topik dominan', 'topics', 'topic', 'Satu karya dapat masuk beberapa topik.');
         groupBar(grid, 'Institusi rekan penulis', 'partners', 'partner', 'Institusi selain Unand pada karya penulis.');
