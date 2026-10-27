@@ -21,6 +21,18 @@ export function destroyCharts() { for (const chart of instances)
     chart.destroy(); instances.length = 0; }
 export function downloadBlob(blob, name) { const url = URL.createObjectURL(blob), a = el('a', { href: url, download: name }); a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 export function downloadText(text, name, type = 'text/plain') { downloadBlob(new Blob([text], { type }), name); }
+// SJR Best Quartile (SCImago) per OpenAlex source ID, loaded once from data/sjr.json.
+// Sources without a quartile get no label at all.
+let sjr = { edition: null, sources: {} };
+export function setSJR(value) { sjr = value?.sources ? value : { edition: null, sources: {} }; }
+export const sjrQuartile = id => (id && sjr.sources[id]) || null;
+export const sjrEdition = () => sjr.edition;
+export function sjrBadge(id) {
+    const q = sjrQuartile(id);
+    return q ? el('span', { class: `sjr-badge sjr-${q.toLowerCase()}`, title: `Kuartil terbaik (SJR Best Quartile) jurnal ini pada SCImago Journal Rank edisi ${sjr.edition}. Edisi yang sama dipakai untuk semua tahun terbit.` }, `${q} · SJR ${sjr.edition}`) : null;
+}
+// Chart labels are canvas text: the quartile is a prefix so truncation never cuts it off.
+export const sjrName = (id, name) => { const q = sjrQuartile(id); return q ? `${q} · ${name}` : name; };
 export function panel(grid, title, note = '', wide = false) {
     const node = el('section', { class: `panel${wide ? ' wide' : ''}` });
     const head = el('div', { class: 'panel-head' }), labels = el('div'), actions = el('div', { class: 'panel-actions' });
@@ -300,9 +312,10 @@ export function scatter(p, rows, { x = 'count', y = 'citations', xTitle = 'Publi
     accessible(p, rows.slice(0, 50).map(r => ({ ...r, description: `${r.name || r.title}: ${xTitle} ${decimal.format(r[x])}; ${yTitle} ${decimal.format(r[y])}` })), onClick);
 }
 export function hIndexCurve(p, metric, onClick) {
-    const rows = metric?.points || [];
+    // Karya tanpa sitasi tidak digambar; nilai h dan jumlah karya aktif tetap dari seluruh karya.
+    const rows = (metric?.points || []).filter(row => row.citations > 0);
     if (!rows.length) {
-        empty(p, 'Tidak ada karya untuk filter ini.');
+        empty(p, metric?.points?.length ? 'Belum ada karya yang disitasi untuk filter ini.' : 'Tidak ada karya untuk filter ini.');
         return;
     }
     const core = rows.filter(row => row.in_h_core), outside = rows.filter(row => !row.in_h_core);

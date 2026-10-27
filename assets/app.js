@@ -5,7 +5,7 @@
 import { MODULES, SDGS, SDG_COLORS, METRIC_KINDS, languageName, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod, workSdgs, citingShard, CITING_FIELDS } from './metrics.js';
 import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderAuthorHeader, renderJournalMetrics, renderJournalCitations, renderJournalTable, METRIC_TITLES, metricYear } from './journal-panel.js';
 import { EXPORT_CONTROLS, SHOW_AUDIT_TAB, CONTENT_PROTECTION } from './config.js';
-import { el, panel, bar, line, donut, stacked, scatter, hIndexCurve, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE, sdgBars } from './charts.js';
+import { el, panel, bar, line, donut, stacked, scatter, hIndexCurve, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE, sdgBars, setSJR, sjrBadge, sjrName, sjrEdition } from './charts.js';
 const $ = id => document.getElementById(id), nf = new Intl.NumberFormat('id-ID'), df = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
 const num = n => n === null || n === undefined ? 'Tidak tersedia' : nf.format(n);
 const decimal = n => n === null || n === undefined ? 'Tidak tersedia' : df.format(n);
@@ -204,10 +204,15 @@ function fwciHelp(container, { open = false, work = false, timeline = false } = 
 function intro(container, text) { container.append(el('div', { class: 'module-intro' }, text)); }
 function years() { return data.top.years.filter(r => Number.isFinite(Number(r.id))).map(r => Number(r.id)); }
 function groupedYears(kind) { return years().map(year => ({ year, total: data.top.years.find(r => Number(r.id) === year)?.count || 0, values: Object.fromEntries(data.top[kind].map(r => [r.id, r.years[year] || 0])) })); }
-function groupBar(grid, title, kind, key, noteText = '', limit = 10) { const p = panel(grid, title, noteText); bar(p, data.top[kind], { limit, onClick: r => drill({ [key]: r.id }) }); return p; }
+function groupBar(grid, title, kind, key, noteText = '', limit = 10) { const p = panel(grid, title, noteText); bar(p, kind === 'sources' ? data.top[kind].map(r => ({ ...r, name: sjrName(r.id, r.name) })) : data.top[kind], { limit, onClick: r => drill({ [key]: r.id }) }); return p; }
 function pubTable(container, rows = data.publications, total = data.total, { candidate = false } = {}) {
     const section = el('section', { class: 'panel table-panel publication-table' }), head = el('div', { class: 'panel-head' }), label = el('div');
     label.append(el('h2', {}, candidate ? 'Kandidat afiliasi untuk ditinjau' : 'Publikasi di balik angka'), el('p', {}, candidate ? 'Kandidat berbasis teks; belum dinyatakan sebagai karya Unand.' : `${num(total)} karya sesuai cakupan · klik judul untuk rincian`));
+    if (!candidate && sjrEdition()) {
+        const sjrNote = el('p', {}, `Label Q1–Q4 di samping nama jurnal: kuartil terbaik (SJR Best Quartile) edisi ${sjrEdition()}, dipakai untuk semua tahun terbit. Jurnal tanpa kuartil tidak diberi label. Sumber: `);
+        sjrNote.append(external('SCImago Journal & Country Rank ↗', 'https://www.scimagojr.com'), document.createTextNode('.'));
+        label.append(sjrNote);
+    }
     head.append(label);
     section.append(head);
     if (!candidate) {
@@ -241,8 +246,11 @@ function pubTable(container, rows = data.publications, total = data.total, { can
             const tr = el('tr'), title = el('td'), button = el('button', { class: 'work-title', type: 'button', 'data-work-id': row.id }, row.title);
             button.onclick = () => openWork(row.id);
             title.append(button);
-            if (row.source_name)
-                title.append(el('span', { class: 'work-source' }, row.source_name));
+            if (row.source_name) {
+                const source = el('span', { class: 'work-source' }, row.source_name), badge = sjrBadge(row.source);
+                if (badge) source.append(' ', badge);
+                title.append(source);
+            }
             if (row.retracted)
                 title.append(el('span', { class: 'warning-tag' }, 'Flag retraksi · perlu telaah konteks'));
             const access = el('td');
@@ -500,10 +508,14 @@ function render() {
         // Dua per baris; setiap grafik hanya memuat karya penulis ini dan klik mempersempit halaman ini.
         line(panel(grid, 'Perjalanan publikasi', 'Karya penulis menurut tahun publikasi. Klik tahun untuk mempersempit halaman ini.'), data.top.years, { onClick: drillYear });
         line(panel(grid, 'Sitasi menurut tahun diterima', 'Sitasi kepada karya penulis pada setiap tahun (counts_by_year OpenAlex); jendela tersedia terbatas.'), data.citation_years.map(([year, count]) => ({ year, count })), { label: 'Sitasi', unit: 'sitasi' });
-        const hChart = data.h_index_chart, hPanel = panel(grid, 'Kurva h-index karya aktif', `h-index: ${num(hChart.value)} · ${num(hChart.works_n)} karya aktif · ${num(hChart.value)} karya dalam h-core. Nilai mengikuti seluruh filter aktif.`, true);
+        // Baris kedua: kurva h-index dan sebaran sitasi; baris ketiga: jenis karya dan negara kolaborasi.
+        const hChart = data.h_index_chart, uncited = hChart.points.filter(row => !(row.citations > 0)).length;
+        const hPanel = panel(grid, 'Kurva h-index karya aktif', `h-index: ${num(hChart.value)} · ${num(hChart.works_n)} karya aktif · ${num(hChart.value)} karya dalam h-core.${uncited ? ` ${num(uncited)} karya tanpa sitasi tidak digambar.` : ''} Nilai mengikuti seluruh filter aktif.`);
         hIndexCurve(hPanel, hChart, row => openWork(row.id));
-        stacked(panel(grid, 'Jenis karya menurut tahun', 'Jenis minor dapat berada di luar enam seri teratas.'), groupedYears('types'), data.top.types.slice(0, 6), { onClick: (y, s) => drill({ from: y.year, to: y.year, type: s.id }) });
         bar(panel(grid, 'Sebaran sitasi', 'Jumlah karya per rentang sitasi. Klik rentang untuk melihat karyanya.'), data.histogram, { horizontal: false, onClick: r => drill({ bin: r.id }) });
+        stacked(panel(grid, 'Jenis karya menurut tahun', 'Jenis minor dapat berada di luar enam seri teratas.'), groupedYears('types'), data.top.types.slice(0, 6), { onClick: (y, s) => drill({ from: y.year, to: y.year, type: s.id }) });
+        collaborationMap(grid, { title: 'Negara kolaborasi', includeHome: true, unit: 'karya', wide: false,
+            note: 'Negara afiliasi seluruh penulis pada karya ini, termasuk Indonesia. Luas bubble sebanding dengan jumlah karya; satu karya dapat masuk beberapa negara.' });
         groupBar(grid, 'Sumber publikasi teratas', 'sources', 'source');
         groupBar(grid, 'Bahasa metadata', 'languages', 'language', 'Bahasa judul atau abstrak, belum tentu bahasa teks lengkap.');
         sdgCard(grid, 'SDG karya penulis');
@@ -517,8 +529,6 @@ function render() {
             tooltip: r => `${r.year}: rerata FWCI ${r.value === null ? 'tidak tersedia' : decimal(r.value)} · ${num(r.n)} karya ber-FWCI${r.n < 5 ? ' · basis kecil' : ''}`, onClick: drillYear });
         fwciHelp(fwciPanel.node);
         minis(content, [['Median sitasi', decimal(k.median_citations), 'Per karya'], ['Karya disitasi', pct(k.cited_share), 'Minimal satu sitasi'], ['Cakupan FWCI', pct(k.fwci_coverage), 'Karya dengan FWCI valid']]);
-        collaborationMap(grid, { title: 'Negara kolaborasi', includeHome: true, unit: 'karya',
-            note: 'Negara afiliasi seluruh penulis pada karya ini, termasuk Indonesia. Luas bubble sebanding dengan jumlah karya; satu karya dapat masuk beberapa negara.' });
     }
     else if (currentModule === 'authors') {
         intro(content, 'Seluruh statistik pada diagram penulis dihitung dari authorship yang pada elemen yang sama berafiliasi Unand. Statistik sepanjang karier ditampilkan terpisah pada rincian.');
@@ -615,13 +625,13 @@ function render() {
     }
     else if (currentModule === 'journals' && !journal) {
         groupBar(grid, 'Sumber menurut keluaran', 'sources', 'source', 'Daftar sumber terpetakan; bukan daftar resmi seluruh jurnal aktif.');
-        scatter(panel(grid, 'Volume dan sitasi sumber'), data.top.sources, { bubble: true, onClick: r => drill({ source: r.id }) });
+        scatter(panel(grid, 'Volume dan sitasi sumber'), data.top.sources.map(r => ({ ...r, name: sjrName(r.id, r.name) })), { bubble: true, onClick: r => drill({ source: r.id }) });
         groupBar(grid, 'Negara afiliasi kontributor', 'countries', 'country', 'Karya terbitan Unand dapat ditulis peneliti di luar Unand.');
         stacked(panel(grid, 'Komposisi akses per tahun'), data.oa_years.map(y => ({ ...y, values: y.oa })), data.top.oa, { percentage: true, onClick: (y, s) => drill({ from: y.year, to: y.year, oa: s.id }) });
         const origins = panel(grid, 'Asal afiliasi karya per sumber', '10 jurnal dengan karya terbanyak dalam filter aktif. Setiap batang = 100% karya jurnal tersebut: ada sedikitnya satu authorship Unand atau tanpa afiliasi Unand. Nama lengkap dan angka tersedia pada tooltip dan rincian diagram.', true);
         origins.node.classList.add('source-origins');
         origins.body.style.height = '510px';
-        stacked(origins, data.top.journals.map(r => ({ year: r.name, total: r.count, source: r.id, values: { local: r.local, external: r.count - r.local } })), [{ id: 'local', name: 'Ada afiliasi Unand' }, { id: 'external', name: 'Tanpa afiliasi Unand' }], { percentage: true, horizontal: true, onClick: (y, s) => drill({ source: y.source, local: s.id === 'local' ? 'yes' : 'no' }) });
+        stacked(origins, data.top.journals.map(r => ({ year: sjrName(r.id, r.name), total: r.count, source: r.id, values: { local: r.local, external: r.count - r.local } })), [{ id: 'local', name: 'Ada afiliasi Unand' }, { id: 'external', name: 'Tanpa afiliasi Unand' }], { percentage: true, horizontal: true, onClick: (y, s) => drill({ source: y.source, local: s.id === 'local' ? 'yes' : 'no' }) });
         journalTable(content);
     }
     else if (currentModule === 'repositories') {
@@ -714,9 +724,9 @@ function growthTimeline(grid) {
     p.node.append(details);
 }
 // Bubble map of countries; Kolaborasi leaves Indonesia out (partners), a journal page keeps it (contributors).
-function collaborationMap(grid, { title = 'Peta negara mitra penelitian', note, includeHome = false, unit } = {}) {
+function collaborationMap(grid, { title = 'Peta negara mitra penelitian', note, includeHome = false, unit, wide = true } = {}) {
     const rows = data.country_map.filter(row => includeHome || row.id !== 'ID');
-    const p = panel(grid, title, note ?? 'Seluruh negara/area di luar Indonesia pada filter aktif. Satu karya dapat masuk beberapa negara. Hover, fokus, atau sentuh bubble untuk melihat popup data. Interaksi peta tidak mengubah filter Jelajahi data.', true);
+    const p = panel(grid, title, note ?? 'Seluruh negara/area di luar Indonesia pada filter aktif. Satu karya dapat masuk beberapa negara. Hover, fokus, atau sentuh bubble untuk melihat popup data. Interaksi peta tidak mengubah filter Jelajahi data.', wide);
     p.node.classList.add('world-map-panel');
     const draw = async () => {
         p.node.setAttribute('aria-busy', 'true');
@@ -853,6 +863,8 @@ function entityTable(container, kind) {
                 const item = el('tr'), name = el('td'), button = el('button', { class: 'work-title', type: 'button' }, row.name);
                 button.onclick = () => kind === 'authors' ? openAuthor(row.id) : drill({ [config.key]: row.id });
                 name.append(button);
+                const badge = kind === 'sources' ? sjrBadge(row.id) : null;
+                if (badge) name.append(' ', badge);
                 item.append(el('td', { class: 'num' }, num(row.rank)), name);
                 for (const value of config.values(row)) item.append(el('td', {}, value));
                 body.append(item);
@@ -1033,7 +1045,9 @@ async function openWork(id) {
             body.append(el('p', { class: 'notice' }, 'Kandidat audit afiliasi. Belum dikonfirmasi sebagai karya Unand.'));
         if (w.retracted)
             body.append(el('p', { class: 'notice error' }, 'Metadata memiliki flag retraksi. Periksa sumber dan konteks sebelum menggunakan karya ini.'));
-        body.append(el('p', {}, `${w.source_name || 'Sumber tidak diketahui'} · ${w.year || 'Tahun tidak diketahui'} · ${w.type}`));
+        const sourceLine = el('p', {}, `${w.source_name || 'Sumber tidak diketahui'} · ${w.year || 'Tahun tidak diketahui'} · ${w.type}`), sourceBadge = sjrBadge(w.source);
+        if (sourceBadge) sourceLine.append(' ', sourceBadge);
+        body.append(sourceLine);
         const { panel, citingPanel, citingTab } = workTabs(body);
         loadCiting(w, citingPanel, citingTab, token);
         const details = el('div', { class: 'detail-grid' });
@@ -1239,7 +1253,8 @@ async function init() {
         $('freshness').classList.toggle('stale', age > 10);
         $('freshness').title = formatDate(manifest.updated_at);
         $('snapshot-caption').textContent = `Snapshot ${formatDate(manifest.updated_at)} · Pembaruan Senin 07.23 WIB`;
-        history = await getJSON(manifest.files.history.path);
+        [history] = await Promise.all([getJSON(manifest.files.history.path),
+            manifest.files.sjr ? getJSON(manifest.files.sjr.path).then(setSJR, () => setSJR(null)) : null]);
         window.addEventListener('hashchange', route);
         await route();
     }

@@ -2,7 +2,7 @@
  * Licensed under the PolyForm Noncommercial License 1.0.0
  * (https://polyformproject.org/licenses/noncommercial/1.0.0). Commercial use requires prior
  * written permission from the copyright holder. See LICENSE and NOTICE. */
-import { el, panel, line, bar, PALETTE } from './charts.js';
+import { el, panel, line, bar, PALETTE, sjrBadge } from './charts.js';
 import { journalRecap } from './metrics.js';
 
 const count = n => new Intl.NumberFormat('id-ID').format(n);
@@ -207,7 +207,9 @@ export function renderJournalRecap(container, dataset, filter, onYear) {
 export function renderJournalHeader(container, dataset, journal, onBack) {
     const header = el('section', { class: 'journal-page-head' }), back = el('button', { class: 'button secondary', type: 'button' }, '← Semua jurnal Unand');
     back.onclick = onBack;
-    header.append(back, el('h2', { id: 'journal-page-title' }, journal.name),
+    const title = el('h2', { id: 'journal-page-title' }, journal.name), titleBadge = sjrBadge(journal.id);
+    if (titleBadge) title.append(' ', titleBadge);
+    header.append(back, title,
         el('p', { class: 'panel-note' }, `${journal.issn.length ? 'ISSN ' + journal.issn.join(', ') + ' · ' : ''}Halaman khusus jurnal: KPI, metrik, grafik, dan daftar artikel hanya memuat karya yang terbit pada jurnal ini (seluruh afiliasi dan korpus terkumpul). Data diperbarui: ${updated(dataset.updated_at)} WIB.`));
     container.append(header);
     return header;
@@ -306,7 +308,8 @@ export function renderJournalTable(section, dataset, year, sources, onOpen) {
             button.onclick = () => onOpen(j.id, year);
             const meta = [j.issn.length ? 'ISSN ' + j.issn.join(', ') : 'ISSN tidak tersedia', `DOAJ ${j.doaj === null || j.doaj === undefined ? 'tidak tersedia' : j.doaj ? 'ya' : 'tidak'}`,
                 `APC ${j.apc_usd === null || j.apc_usd === undefined ? 'tidak tersedia' : 'US$ ' + count(j.apc_usd)}`].join(' · ');
-            name.append(button, el('span', { class: 'work-source' }, meta));
+            const badge = sjrBadge(j.id);
+            name.append(button, ...(badge ? [' ', badge] : []), el('span', { class: 'work-source' }, meta));
             tr.append(name, el('td', { class: 'num', 'data-col': 'works' }, count(r.works)), el('td', { class: 'num', 'data-col': 'external' }, pct(r.external)),
                 el('td', { class: 'num', 'data-col': 'four_year' }, mark(r.four_year)), el('td', { class: 'num', 'data-col': 'two_year' }, mark(r.two_year)), el('td', { class: 'num', 'data-col': 'fwci' }, mark(r.fwci)));
             body.append(tr);

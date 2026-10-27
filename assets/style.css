@@ -904,6 +904,26 @@ td.num,th.num {
   font-size:9px;
   margin-top:4px
 }
+/* SJR Best Quartile label beside journal names; each quartile has its own text colour (contrast >= 5.4:1). */
+.sjr-badge {
+  display:inline-block;
+  font-size:9px;
+  font-weight:650;
+  line-height:1.5;
+  letter-spacing:.01em;
+  padding:0 6px;
+  border-radius:999px;
+  white-space:nowrap;
+  vertical-align:middle
+}
+h2 .sjr-badge {
+  font-size:11px;
+  margin-left:4px
+}
+.sjr-q1 { color:#17633F; background:#E3F1E8 }
+.sjr-q2 { color:#1D5596; background:#E4EDF8 }
+.sjr-q3 { color:#7A5600; background:#FAF0D2 }
+.sjr-q4 { color:#A8361A; background:#FBE6DF }
 .oa-tag {
   font-size:9px;
   display:inline-block;

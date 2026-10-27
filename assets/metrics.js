@@ -655,7 +655,7 @@ export function summarize(works, entities, filter, manifest, history = [], table
     const last = maps.years.get(String(completeYear))?.count || 0, prior = maps.years.get(String(completeYear - 1))?.count || 0;
     const publicationRows = [...selected].sort((a, b) => b.citations - a.citations || String(b.date).localeCompare(String(a.date))).slice(0, 50).map(w => ({
         id: w.id, title: w.title, doi: w.doi, year: w.year, citations: w.citations, oa_status: w.oa_status,
-        source_name: name('sources', w.source), scope: w.scopes, retracted: w.retracted,
+        source: w.source, source_name: name('sources', w.source), scope: w.scopes, retracted: w.retracted,
         journal_citations: filter.metricKind ? journalContribution(w, filter.metricKind, Number(filter.metricYear)) : undefined,
     }));
     const histogram = BINS.map(([min, max, label], index) => ({ id: String(index), name: label, count: selected.filter(w => w.citations >= min && w.citations <= max).length }));
@@ -757,4 +757,16 @@ export function publicationPage(works, entities, filter, options = {}) {
     const start = Math.max(0, Number(options.page || 0)) * 50;
     return { total: selected.length, rows: selected.slice(start, start + 50).map(w => ({ ...w, source_name: entities.sources[w.source]?.name || 'Tidak diketahui',
         journal_citations: filter.metricKind ? journalContribution(w, filter.metricKind, Number(filter.metricYear)) : undefined })) };
+}
+// SJR Best Quartile per OpenAlex source, matched by any of its ISSNs against the compact SCImago
+// table (scripts/prepare_sjr.py). Sources without a match are left out, so the UI shows nothing.
+export function sjrQuartiles(sources, table) {
+    const byIssn = new Map();
+    for (const [quartile, issns] of Object.entries(table?.quartiles || {})) for (const issn of issns) byIssn.set(issn, quartile);
+    const result = {};
+    for (const [id, source] of Object.entries(sources || {})) {
+        const found = (source.issn || []).map(issn => byIssn.get(String(issn).replace(/[^0-9Xx]/g, '').toUpperCase())).filter(Boolean).sort();
+        if (found.length) result[id] = found[0];
+    }
+    return result;
 }
