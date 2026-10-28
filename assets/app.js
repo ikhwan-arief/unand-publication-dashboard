@@ -833,7 +833,12 @@ function entityTable(container, kind) {
             values: r => { const s = r.metadata || {}; return [s.type || 'Tidak tersedia', (s.issn || []).join(', ') || 'Tidak tersedia', num(r.count), pct(r.count ? (r.count - r.local) / r.count * 100 : null), typeof s.doaj === 'boolean' ? (s.doaj ? 'Ya' : 'Tidak') : 'Tidak tersedia', decimal(s.apc_usd ?? null)]; } },
     };
     const config = settings[kind], section = el('section', { class: 'panel table-panel entity-table', 'data-kind': kind, 'aria-busy': 'true' });
-    section.append(el('h2', {}, config.title), el('p', { class: 'panel-note' }, config.note));
+    const note = el('p', { class: 'panel-note' }, config.note);
+    // Merging split profiles is done by OpenAlex, not by this dashboard.
+    if (kind === 'authors')
+        note.append(' Untuk menggabungkan profil, penulis perlu menghubungi OpenAlex melalui ', external('openalex.org/support ↗', 'https://openalex.org/support/'),
+            ' dan mencantumkan semua ID profil miliknya. ID profil diawali huruf A dan tercantum pada alamat halaman profil penulis setelah "author=".');
+    section.append(el('h2', {}, config.title), note);
     const form = el('form', { class: 'table-toolbar', role: 'search' }), search = el('input', { class: 'search-input', type: 'search', placeholder: 'Cari nama atau ID dalam daftar', 'aria-label': `Cari ${config.name.toLowerCase()}` }), submit = el('button', { type: 'submit', class: 'button secondary' }, 'Cari');
     // Author name groups: clicking a group label lists every profile in that group; this button returns to the full list.
     const showAll = el('button', { type: 'button', class: 'button secondary', hidden: '' }, 'Tampilkan semua profil');
