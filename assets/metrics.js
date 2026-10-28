@@ -472,6 +472,12 @@ export function normalizedAnnualFWCI(works, yearRows, filter, currentYear) {
         small_sample_years: rows.filter(row => row.status === 'small_sample').length,
         raw_rows: annualFWCI(yearRows, filter.from, filter.to) } };
 }
+// Name key for spotting split author profiles: accents, case, word order and a repeated
+// one-word name are ignored ("Henmaidi" = "Henmaidi Henmaidi"; "Irfan Suliansyah" = "Suliansyah Irfan").
+export function authorNameKey(name) {
+    const words = String(name || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().split(/[^a-z]+/).filter(word => word.length > 1);
+    return [...new Set(words)].sort().join(' ');
+}
 export function entityPage(works, entities, filter, manifest, options = {}) {
     if (!['authors', 'partners', 'funders', 'sources'].includes(options.kind))
         throw new Error('Jenis tabel tidak dikenali.');
@@ -640,10 +646,17 @@ export function summarize(works, entities, filter, manifest, history = [], table
     coverage.orcid_authors = [...affiliatedAuthors].filter(id => entities.authors[id]?.orcid).length;
     const sorted = kind => [...maps[kind].values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
     if (tableOptions) {
-        const all = sorted(tableOptions.kind), limit = tableOptions.kind === 'authors' ? 500 : null;
-        const ranked = (limit ? all.slice(0, limit) : all).map((row, i) => ({ ...row, rank: i + 1 }));
-        const search = String(tableOptions.search || '').trim().toLocaleLowerCase('id-ID');
-        const rows = search ? ranked.filter(row => `${row.name} ${row.id}`.toLocaleLowerCase('id-ID').includes(search)) : ranked;
+        const all = sorted(tableOptions.kind), limit = null;
+        let ranked = all.map((row, i) => ({ ...row, rank: i + 1 }));
+        // Authors: profiles whose normalized names match form a group (same name, not necessarily the same person).
+        if (tableOptions.kind === 'authors') {
+            const sizes = new Map();
+            ranked = ranked.map(row => { const key = authorNameKey(row.name); sizes.set(key, (sizes.get(key) || 0) + 1); return { ...row, name_group: key }; })
+                .map(row => sizes.get(row.name_group) > 1 && row.name_group ? { ...row, name_group_size: sizes.get(row.name_group) } : { ...row, name_group: null });
+        }
+        const search = String(tableOptions.search || '').trim().toLocaleLowerCase('id-ID'), group = tableOptions.group || '';
+        const rows = group ? ranked.filter(row => row.name_group === group)
+            : search ? ranked.filter(row => `${row.name} ${row.id}`.toLocaleLowerCase('id-ID').includes(search)) : ranked;
         const pageSize = tableOptions.pageSize === 'all' ? Math.max(rows.length, 1) : 50, page = Math.max(0, Math.min(Math.floor(Number(tableOptions.page) || 0), Math.max(0, Math.ceil(rows.length / pageSize) - 1)));
         return { rows: rows.slice(page * pageSize, (page + 1) * pageSize), total: rows.length,
             eligible: all.length, limit, page, page_size: pageSize };

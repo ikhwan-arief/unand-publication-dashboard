@@ -813,10 +813,11 @@ function annualFWCITable(container, rows) {
     section.append(wrap);
     container.append(section);
 }
+const NAME_GROUP_COLORS = ['#28745B', '#2F6FA8', '#B23A48', '#8A4F9E', '#8A5A00', '#1F7A7A', '#A3542B', '#5B6B1F'];
 function entityTable(container, kind) {
     const settings = {
-        authors: { title: '500 penulis teratas', key: 'author', name: 'Penulis',
-            note: 'Diurutkan menurut jumlah karya dengan authorship berafiliasi Unand dalam filter aktif. Maksimum 500 profil ber-ID; 50 per halaman. Angka sepanjang karier dapat mencakup afiliasi lain dan ditampilkan terpisah.',
+        authors: { title: 'Profil penulis Unand', key: 'author', name: 'Penulis',
+            note: 'Seluruh profil penulis ber-ID OpenAlex dengan authorship berafiliasi Unand, diurutkan menurut jumlah karya. Bukan daftar dosen aktif. Satu orang dapat memiliki beberapa profil: baris dengan warna dan label yang sama memiliki nama yang sama setelah dinormalisasi, belum tentu orang yang sama.',
             columns: ['Karya Unand dalam filter', 'Sitasi karya Unand', 'Karya sepanjang karier', 'Sitasi sepanjang karier'],
             values: r => [num(r.count), num(r.citations), num(r.career_works), num(r.career_citations)] },
         partners: { title: 'Daftar institusi kolaborasi', key: 'partner', name: 'Institusi mitra',
@@ -834,7 +835,9 @@ function entityTable(container, kind) {
     const config = settings[kind], section = el('section', { class: 'panel table-panel entity-table', 'data-kind': kind, 'aria-busy': 'true' });
     section.append(el('h2', {}, config.title), el('p', { class: 'panel-note' }, config.note));
     const form = el('form', { class: 'table-toolbar', role: 'search' }), search = el('input', { class: 'search-input', type: 'search', placeholder: 'Cari nama atau ID dalam daftar', 'aria-label': `Cari ${config.name.toLowerCase()}` }), submit = el('button', { type: 'submit', class: 'button secondary' }, 'Cari');
-    form.append(search, submit);
+    // Author name groups: clicking a group label lists every profile in that group; this button returns to the full list.
+    const showAll = el('button', { type: 'button', class: 'button secondary', hidden: '' }, 'Tampilkan semua profil');
+    form.append(search, submit, showAll);
     const status = el('p', { class: 'panel-note', role: 'status', 'aria-live': 'polite' }, 'Memuat daftar dari snapshot…');
     const wrap = el('div', { class: 'table-scroll' }), table = el('table', { 'aria-label': config.title }), head = el('thead'), tr = el('tr'), body = el('tbody');
     for (const label of ['Peringkat', config.name, ...config.columns]) tr.append(el('th', { scope: 'col' }, label));
@@ -847,24 +850,34 @@ function entityTable(container, kind) {
     pagination.append(count, buttons);
     section.append(form, status, wrap, pagination);
     container.append(section);
-    let page = 0, query = '', lastPage = 0, sequence = 0;
+    let page = 0, query = '', group = null, lastPage = 0, sequence = 0;
     async function load(targetPage = 0) {
         const request = ++sequence;
         section.setAttribute('aria-busy', 'true');
         prev.disabled = next.disabled = last.disabled = true;
         status.textContent = 'Memuat daftar dari snapshot…';
         try {
-            const result = await task('entities', { kind, search: query, page: targetPage });
+            const result = await task('entities', { kind, search: query, group: group?.key || '', page: targetPage });
             if (request !== sequence || !section.isConnected) return;
             page = result.page;
             lastPage = Math.max(0, Math.ceil(result.total / result.page_size) - 1);
             body.replaceChildren();
+            const groupColors = new Map();
             for (const row of result.rows) {
                 const item = el('tr'), name = el('td'), button = el('button', { class: 'work-title', type: 'button' }, row.name);
                 button.onclick = () => kind === 'authors' ? openAuthor(row.id) : drill({ [config.key]: row.id });
                 name.append(button);
                 const badge = kind === 'sources' ? sjrBadge(row.id) : null;
                 if (badge) name.append(' ', badge);
+                if (row.name_group_size > 1) {
+                    // Colours are handed out per page in order of appearance, so groups on one page differ (up to the palette size).
+                    if (!groupColors.has(row.name_group)) groupColors.set(row.name_group, NAME_GROUP_COLORS[groupColors.size % NAME_GROUP_COLORS.length]);
+                    item.classList.add('name-group-row');
+                    item.style.setProperty('--group-color', groupColors.get(row.name_group));
+                    const label = el('button', { type: 'button', class: 'name-group-label', title: 'Tampilkan semua profil dengan nama yang sama setelah dinormalisasi' }, `${num(row.name_group_size)} profil bernama sama`);
+                    label.onclick = () => { group = { key: row.name_group, name: row.name }; query = ''; search.value = ''; load(); };
+                    name.append(' ', label);
+                }
                 item.append(el('td', { class: 'num' }, num(row.rank)), name);
                 for (const value of config.values(row)) item.append(el('td', {}, value));
                 body.append(item);
@@ -876,8 +889,9 @@ function entityTable(container, kind) {
             }
             const first = result.total ? page * result.page_size + 1 : 0, end = Math.min((page + 1) * result.page_size, result.total);
             count.textContent = `${num(first)}–${num(end)} dari ${num(result.total)}`;
+            showAll.hidden = !group;
             status.textContent = kind === 'authors'
-                ? `${num(Math.min(500, result.eligible))} profil teratas dari ${num(result.eligible)} penulis ber-ID dalam filter aktif${query ? ' · ' + num(result.total) + ' hasil pencarian' : ''}.`
+                ? `${num(result.eligible)} profil penulis ber-ID dalam filter aktif${group ? ` · ${num(result.total)} profil bernama sama dengan ${group.name}` : query ? ' · ' + num(result.total) + ' hasil pencarian' : ''}.`
                 : `${num(result.eligible)} ${kind === 'sources' ? 'sumber' : kind === 'funders' ? 'pendana' : 'institusi mitra'} dalam filter aktif${query ? ' · ' + num(result.total) + ' hasil pencarian' : ''}.`;
             prev.disabled = page === 0;
             next.disabled = last.disabled = page >= lastPage;
@@ -892,7 +906,8 @@ function entityTable(container, kind) {
             if (request === sequence) section.setAttribute('aria-busy', 'false');
         }
     }
-    form.onsubmit = event => { event.preventDefault(); query = search.value.trim(); load(); };
+    form.onsubmit = event => { event.preventDefault(); query = search.value.trim(); group = null; load(); };
+    showAll.onclick = () => { group = null; query = ''; search.value = ''; load(); };
     prev.onclick = () => load(page - 1);
     next.onclick = () => load(page + 1);
     last.onclick = () => load(lastPage);

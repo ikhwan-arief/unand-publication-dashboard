@@ -942,6 +942,30 @@ h2 .sjr-badge {
   color:var(--red);
   display:block
 }
+/* Author profiles sharing a normalized name: same colour marker and label per group (contrast >= 5:1 on white). */
+.name-group-row td:first-child {
+  box-shadow:inset 4px 0 0 var(--group-color)
+}
+.name-group-label {
+  display:inline-block;
+  margin-left:4px;
+  padding:0 7px;
+  border:1px solid var(--group-color);
+  border-radius:999px;
+  background:var(--white);
+  color:var(--group-color);
+  font:inherit;
+  font-size:9px;
+  font-weight:650;
+  line-height:1.6;
+  white-space:nowrap;
+  cursor:pointer;
+  vertical-align:middle
+}
+.name-group-label:hover,.name-group-label:focus-visible {
+  background:var(--group-color);
+  color:var(--white)
+}
 .pagination {
   display:flex;
   justify-content:space-between;
