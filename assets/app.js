@@ -5,7 +5,8 @@
 import { MODULES, SDGS, SDG_COLORS, METRIC_KINDS, languageName, csvCell, metricDrill, journalWindow, snapshotYearOf, withoutPeriod, workSdgs, citingShard, CITING_FIELDS } from './metrics.js';
 import { renderImpactMetrics, renderJournalRecap, renderJournalHeader, renderAuthorHeader, renderJournalMetrics, renderJournalCitations, renderJournalTable, METRIC_TITLES, metricYear } from './journal-panel.js';
 import { EXPORT_CONTROLS, SHOW_AUDIT_TAB, CONTENT_PROTECTION } from './config.js';
-import { el, panel, bar, line, donut, stacked, scatter, hIndexCurve, heatmap, treemap, network, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE, sdgBars, setSJR, sjrBadge, sjrName, sjrEdition } from './charts.js';
+import { vosviewerFiles } from './sciencemap.js';
+import { el, panel, bar, line, donut, stacked, scatter, hIndexCurve, heatmap, treemap, network, scienceMap, fundingFlow, dots, smallMultiples, countryBubbleMap, destroyCharts, downloadText, PALETTE, sdgBars, setSJR, sjrBadge, sjrName, sjrEdition } from './charts.js';
 const $ = id => document.getElementById(id), nf = new Intl.NumberFormat('id-ID'), df = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 });
 const num = n => n === null || n === undefined ? 'Tidak tersedia' : nf.format(n);
 const decimal = n => n === null || n === undefined ? 'Tidak tersedia' : df.format(n);
@@ -101,6 +102,34 @@ async function getSummary() { if (isDefault()) {
     return overviewCache.get(scope);
 } return task('summary', { ratios: currentModule === 'citations' }); }
 function option(select, value, label) { select.append(el('option', { value }, label)); }
+// Panel with a map in the manner of VOSviewer. controls: elements or [label, input] pairs; settings() gives the worker options; unit names the nodes.
+function mapPanel(grid, title, note, action, controls, settings, unit, onClick) {
+    const net = panel(grid, title, note, true), toolbar = el('div', { class: 'map-controls' }), view = el('select', { 'aria-label': 'Tampilan peta' }), size = el('select', { 'aria-label': `Jumlah maksimal ${unit}` });
+    for (const [v, l] of [['network', 'Jaringan (klaster)'], ['overlay', 'Overlay (tahun)'], ['density', 'Densitas']]) option(view, v, l);
+    for (const v of [100, 200, 300]) option(size, String(v), `${v} ${unit}`);
+    size.value = '300';
+    const inputs = [];
+    for (const c of controls) { if (Array.isArray(c)) { const label = el('label', {}, c[0]); label.append(c[1]); toolbar.append(label); inputs.push(c[1]); } else { toolbar.append(c); inputs.push(c); } }
+    toolbar.append(view, size);
+    net.actions.append(toolbar);
+    let request = 0, current = null;
+    const render = () => {
+        net.actions.querySelectorAll('.chart-export').forEach(b => b.remove()); net.node.querySelector('.chart-data')?.remove();
+        scienceMap(net, current, { view: view.value, onClick, files: current.nodes.length ? vosviewerFiles(current) : null });
+        const s = current.stats;
+        if (current.nodes.length) net.body.append(el('p', { class: 'map-note' }, `${num(s.nodes)} ${unit} dan ${num(s.shown_links)} dari ${num(s.total_links)} hubungan ditampilkan (himpunan terhubung terbesar). ${num(s.outside_largest_set)} ${unit} terpilih berada di luarnya; ${num(s.linked_works)} ${unit} dalam filter memiliki sedikitnya satu hubungan.`));
+    };
+    const draw = async () => {
+        const mine = ++request;
+        net.body.replaceChildren(el('div', { class: 'empty-state' }, 'Menghitung peta…'));
+        const result = await task(action, { ...settings(), maxNodes: Number(size.value) });
+        if (mine !== request) return;
+        current = result; render();
+    };
+    for (const input of [...inputs, size]) input.onchange = draw;
+    view.onchange = () => current && render();
+    draw();
+}
 async function getJournalDataset() {
     if (!manifest.files.journal_metrics) return null;
     if (!journalDatasetPromise) journalDatasetPromise = getJSON(manifest.files.journal_metrics.path).then(result => {
@@ -545,14 +574,13 @@ function render() {
         line(panel(grid, 'Sitasi menurut tahun teramati', 'Jumlah pada counts_by_year; jendela tersedia terbatas, bukan seluruh sejarah.'), data.citation_years.map(([year, count]) => ({ year, count })), { label: 'Sitasi teramati',unit:'sitasi' });
         scatter(panel(grid, 'Usia karya dan sitasi', 'Maksimum 250 karya paling disitasi; usia dihitung dari tahun snapshot.'), data.scatter, { x: 'age', y: 'citations', xTitle: 'Usia karya (tahun)', onClick: r => openWork(r.id) });
         bar(panel(grid, 'Kelompok dampak ternormalisasi', `Cakupan persentil: ${num(k.eligible)} karya · ${pct(k.percentile_coverage)}.`), k.eligible ? [{ id: 'top1', name: 'Top 1 persen', count: k.top1 }, { id: 'top10', name: 'Top 10 persen (termasuk top 1)', count: k.top10 }] : [], { limit: 2, onClick: r => drill({ metric: r.id }) });
-        const net = panel(grid, filter.scope === 'affiliated' ? 'Hubungan antarkarya Unand' : 'Hubungan antarkarya terpilih', 'Subset maksimal 40 karya paling disitasi; hubungan berupa referensi yang teramati.', true);
-        const select = el('select', { 'aria-label': 'Jenis jejaring sitasi' });
-        for (const [v, l] of [['citations', 'Sitasi langsung'], ['coupling', 'Referensi bersama'], ['cocitation', 'Co-citation']])
-            option(select, v, l);
-        net.actions.append(select);
-        const draw = () => { net.body.replaceChildren(); net.node.querySelector('.chart-data')?.remove(); net.actions.querySelector('.chart-export')?.remove(); network(net, data.networks[select.value], r => openWork(r.id)); };
-        select.onchange = draw;
-        draw();
+        // Citation map in the manner of VOSviewer, computed in the worker for the active filter.
+        const kind = el('select', { 'aria-label': 'Jenis hubungan' });
+        for (const [v, l] of [['coupling', 'Referensi bersama (bibliographic coupling)'], ['direct', 'Sitasi langsung'], ['cocitation', 'Ko-sitasi']]) option(kind, v, l);
+        const minimum = el('input', { type: 'number', min: 0, max: 500, value: 0, 'aria-label': 'Minimal sitasi' });
+        mapPanel(grid, filter.scope === 'affiliated' ? 'Hubungan antarkarya Unand' : 'Hubungan antarkarya terpilih',
+            'Peta karya yang paling kuat saling terhubung: normalisasi association strength, tata letak VOS, dan klaster modularitas seperti VOSviewer. Hubungan berupa referensi yang teramati di OpenAlex.',
+            'sciencemap', [kind, ['Min. sitasi', minimum]], () => ({ kind: kind.value, minCitations: Number(minimum.value) || 0 }), 'karya', r => openWork(r.id));
         minis(content, [['Median sitasi', decimal(k.median_citations), 'Tidak terlalu dipengaruhi pencilan'], ['h-index lingkup', num(k.h_index), 'Hanya himpunan karya aktif'], ['Rerata sitasi', decimal(data.total ? k.citations / data.total : null), 'Sitasi kumulatif dibagi karya'], ['Cakupan FWCI', pct(k.fwci_coverage), 'Nilai kosong dikeluarkan dari rerata']]);
         const concentration = k.citation_concentration_top10;
         minis(content, [['Konsentrasi sitasi 10% karya teratas', pct(concentration.value), concentration.value === null ? (concentration.works_n ? 'Seluruh karya belum disitir' : 'Tidak ada karya') : `${num(concentration.top_works_n)} dari ${num(concentration.works_n)} karya menyumbang ${num(concentration.top_citations)} dari ${num(concentration.total_citations)} sitasi`]]);
@@ -562,7 +590,12 @@ function render() {
         scatter(panel(grid, 'Negara mitra penelitian', 'Negara di luar Indonesia; satu karya dapat masuk beberapa negara.'), data.top.countries.filter(r => r.id !== 'ID'), { bubble: true, onClick: r => drill({ country: r.id }) });
         groupBar(grid, 'Institusi yang terhubung', 'partners', 'partner', 'Afiliasi ganda dapat membentuk hubungan publikasi.');
         collaborationMap(grid);
-        network(panel(grid, 'Jaringan kolaborasi institusi', 'Garis menunjukkan karya bersama; bukan bukti MoU.', true), data.networks.partners, r => r.id !== 'I55892964' && drill({ partner: r.id }));
+        // Co-authorship map of institutions in the manner of VOSviewer; Unand is optional because it is on every affiliated work.
+        const minWorks = el('input', { type: 'number', min: 1, max: 500, value: 2, 'aria-label': 'Minimal karya bersama' });
+        const withHome = el('input', { type: 'checkbox', 'aria-label': 'Sertakan Unand' });
+        mapPanel(grid, 'Jaringan kolaborasi institusi', 'Peta ko-autorship institusi: tebal hubungan = jumlah karya bersama. Normalisasi association strength, tata letak VOS, dan klaster modularitas seperti VOSviewer; Unand tidak ditampilkan kecuali dicentang. Hubungan bukan bukti MoU.',
+            'collabmap', [['Min. karya', minWorks], ['Sertakan Unand', withHome]], () => ({ minWorks: Number(minWorks.value) || 1, includeHome: withHome.checked }), 'institusi',
+            r => r.id !== 'I55892964' && drill({ partner: r.id }));
         smallMultiples(panel(grid, 'Mitra dan tahun publikasi', 'Grafik garis untuk 10 institusi mitra teratas. Tahun dengan nilai nol pada seluruh mitra yang ditampilkan disembunyikan; tahun pada sumbu dapat tidak berurutan. Ini penyaringan tampilan, bukan penghapusan data sumber. Skala vertikal seragam; satu karya dapat melibatkan beberapa mitra.', true), data.top.partners, years(), (r, y) => drill({ partner: r.id, from: y, to: y }), { omitEmpty: true });
         line(panel(grid, 'Porsi kolaborasi internasional', 'Persentase karya dengan lebih dari satu negara teridentifikasi.'), data.oa_years.map(y => ({ year: y.year, count: y.total ? y.international / y.total * 100 : null })), { percent: true });
         bar(panel(grid, 'Sektor mitra', 'Satu karya dapat mencakup lebih dari satu sektor.'), data.top.sectors, { limit: 10 });
@@ -602,7 +635,22 @@ function render() {
         intro(content, 'Gunakan pilihan Cakupan untuk membedakan seluruh karya yang didanai Unand dari pendana pada karya berafiliasi Unand. Metadata pendanaan yang kosong tidak berarti penelitian tanpa dana.');
         groupBar(grid, 'Pendana yang tercatat', 'funders', 'funder');
         smallMultiples(panel(grid, 'Pendanaan menurut tahun', 'Grafik garis untuk 10 pendana dengan publikasi terbanyak dalam cakupan aktif. Tahun dengan nilai nol pada seluruh pendana yang ditampilkan disembunyikan; tahun pada sumbu dapat tidak berurutan. Data sumber tetap utuh. Skala vertikal seragam; satu karya dapat memiliki beberapa pendana.', true), data.top.funders, years(), (r, y) => drill({ funder: r.id, from: y, to: y }), { omitEmpty: true });
-        network(panel(grid, 'Pendana dan topik penelitian', 'Hubungan berdasarkan keberadaan pendana dan topik pada karya yang sama.', true), data.networks.funding, r => drill(r.id.startsWith('F') ? { funder: r.id } : { topic: r.id }));
+        // Funding flows: Sankey (or heatmap) from the top funders to fields or topics; a click opens the works behind a band, a cell or a node.
+        const flowPanel = panel(grid, 'Pendana dan topik penelitian', 'Lebar pita = jumlah karya yang memuat pendana dan bidang (atau topik) tersebut. Karya dengan beberapa pendana dihitung sekali untuk setiap pendana. Hanya karya dengan metadata pendana yang tampil; metadata kosong tidak berarti penelitian tanpa dana.', true);
+        const flowBy = el('select', { 'aria-label': 'Sisi kanan' }), flowView = el('select', { 'aria-label': 'Tampilan pendanaan' }), flowBar = el('div', { class: 'map-controls' });
+        for (const [v, l] of [['field', 'Menurut bidang'], ['topic', 'Menurut topik']]) option(flowBy, v, l);
+        for (const [v, l] of [['sankey', 'Sankey'], ['heatmap', 'Heatmap']]) option(flowView, v, l);
+        flowBar.append(flowBy, flowView); flowPanel.actions.append(flowBar);
+        let flowRequest = 0, flow = null;
+        const flowRender = () => {
+            flowPanel.actions.querySelectorAll('.chart-export').forEach(b => b.remove()); flowPanel.node.querySelector('.chart-data')?.remove();
+            fundingFlow(flowPanel, flow, { view: flowView.value, onClick: ({ funder, target }) => drill({ ...(funder ? { funder } : {}), ...(target && target !== 'unknown' ? { [flow.by]: target } : {}) }) });
+            if (flow.funded) flowPanel.body.append(el('p', { class: 'map-note' }, `${num(flow.funded)} dari ${num(flow.total)} karya dalam filter (${pct(flow.total ? flow.funded / flow.total * 100 : 0)}) mencatat sedikitnya satu pendana; seluruhnya ${num(flow.funders)} pendana. ${flow.sources.filter(s => s.id !== 'other').length} pendana teratas ditampilkan terpisah.`));
+        };
+        const flowDraw = async () => { const mine = ++flowRequest; flowPanel.body.replaceChildren(el('div', { class: 'empty-state' }, 'Menghitung…'));
+            const result = await task('fundingflow', { by: flowBy.value }); if (mine !== flowRequest) return; flow = result; flowRender(); };
+        flowBy.onchange = flowDraw; flowView.onchange = () => flow && flowRender();
+        flowDraw();
         minis(content, [['Karya dengan pendana', num(data.total - data.quality.funder), 'Kelengkapan metadata pendanaan'], ['Hibah teridentifikasi', num(data.top.awards.length), 'Maksimum 50 pada ringkasan'], ['APC daftar diketahui', num(k.apc_n), 'Harga daftar, bukan belanja institusi'], ['Pembayaran OpenAPC', num(k.paid_verified), 'Artikel dengan provenance OpenAPC']]);
         intro(content, `Rerata APC daftar yang diketahui: ${k.apc_mean === null ? 'Tidak tersedia' : 'US$ ' + decimal(k.apc_mean)}. ${num(k.paid_fallback)} rekaman estimasi pembayaran memakai provenance selain OpenAPC. Tidak dijumlahkan sebagai realisasi belanja Unand.`);
         entityTable(content, 'funders');
@@ -933,7 +981,7 @@ function methodPanel(grid) {
         if (title === 'Metrik ternormalisasi') fwciHelp(box);
         p.body.append(box);
     }
-    p.node.append(el('p', { class: 'panel-note' }, `Snapshot ${manifest.updated_at}. ${manifest.authorships_refreshed_at?'Metadata authorship diperiksa ulang '+formatDate(manifest.authorships_refreshed_at)+'. ':''}Metadata OpenAlex CC0; hak dokumen mengikuti lisensi aslinya. Jaringan dibatasi maksimal 40 simpul dan 150 hubungan. Sumber: help.openalex.org.`));
+    p.node.append(el('p', { class: 'panel-note' }, `Snapshot ${manifest.updated_at}. ${manifest.authorships_refreshed_at?'Metadata authorship diperiksa ulang '+formatDate(manifest.authorships_refreshed_at)+'. ':''}Metadata OpenAlex CC0; hak dokumen mengikuti lisensi aslinya. Peta jaringan dibatasi maksimal 300 simpul dan 3.000 hubungan. Sumber: help.openalex.org.`));
 }
 // Shared work detail: tabs "Detail" and "Karya penyitir" for every module that opens a work.
 let detailToken = 0;

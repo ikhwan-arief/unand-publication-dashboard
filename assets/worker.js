@@ -2,8 +2,10 @@
  * Licensed under the PolyForm Noncommercial License 1.0.0
  * (https://polyformproject.org/licenses/noncommercial/1.0.0). Commercial use requires prior
  * written permission from the copyright holder. See LICENSE and NOTICE. */
-import { summarize, publicationPage, entityPage, filteredWorks, journalWindow, snapshotYearOf } from './metrics.js';
-let works = [], entities = {}, manifest, history = [], loadedKey = '';
+import { summarize, publicationPage, entityPage, filteredWorks, journalWindow, snapshotYearOf, institutionIDs } from './metrics.js';
+import { buildScienceMap, buildCollaborationMap, buildFundingFlow } from './sciencemap.js';
+const UNAND_ID = 'I55892964';
+let works = [], entities = {}, manifest, history = [], loadedKey = '', cocitation;
 async function getJSON(url) {
     const response = await fetch(url);
     if (!response.ok)
@@ -49,6 +51,29 @@ async function handle({ data }) {
             result = w ? { ...w, author_names: w.authors.map(a => ({ ...a, ...entities.authors[a.id], institution_names: a.institutions.map(id => entities.institutions[id]?.name || id) })),
                 source_name: entities.sources[w.source]?.name, source_details: entities.sources[w.source], topic_name: entities.topics[w.topic]?.name,
                 funding: w.funders.map(id => entities.funders[id]), award_details: w.awards.map(id => entities.awards[id]) } : null;
+        }
+        else if (action === 'sciencemap') {
+            // External co-citation pairs (all citing works) are precomputed at build time and loaded once.
+            if (options.kind === 'cocitation' && cocitation === undefined)
+                cocitation = manifest.files.cocitation ? (await getJSON(new URL('../' + manifest.files.cocitation.path, import.meta.url))).pairs : null;
+            const surname = a => { const name = (entities.authors[a?.id]?.name || a?.name || '').trim(); return name ? name.split(/\s+/).pop() : 'Anonim'; };
+            result = buildScienceMap(works, options.kind, { pool: filteredWorks(works, filter, entities, snapshotYear), minCitations: options.minCitations,
+                maxNodes: options.maxNodes, cocitationPairs: cocitation, label: w => `${surname(w.authors[0])} (${w.year ?? 't.t.'})` });
+            for (const c of result.clusters) c.topic_name = entities.topics[c.topic]?.name || null;
+        }
+        else if (action === 'collabmap') {
+            const region = new Intl.DisplayNames(['id'], { type: 'region' });
+            // Every record flagged as Unand (the university and its own units) counts as one node, Universitas Andalas.
+            const institutionsOf = w => institutionIDs(w).map(id => entities.institutions[id]?.unand ? UNAND_ID : id);
+            result = buildCollaborationMap(filteredWorks(works, filter, entities, snapshotYear), { institutionsOf, homeId: UNAND_ID,
+                includeHome: Boolean(options.includeHome), minWorks: options.minWorks, maxNodes: options.maxNodes,
+                nameOf: id => id === UNAND_ID ? 'Universitas Andalas' : entities.institutions[id]?.name || id, countryOf: id => entities.institutions[id]?.country || null });
+            for (const c of result.clusters) { try { c.country_name = c.country ? region.of(c.country) : null; } catch { c.country_name = c.country; } }
+        }
+        else if (action === 'fundingflow') {
+            const fieldNames = Object.fromEntries(Object.values(entities.topics).filter(t => t.field).map(t => [t.field, t.field_name || t.field]));
+            result = buildFundingFlow(filteredWorks(works, filter, entities, snapshotYear), { by: options.by === 'topic' ? 'topic' : 'field',
+                funderName: id => entities.funders[id]?.name || id, targetName: id => options.by === 'topic' ? entities.topics[id]?.name || id : fieldNames[id] || id });
         }
         else if (action === 'export')
             result = filteredWorks(works, filter, entities, snapshotYear).map(w => options.format==='json'?{
